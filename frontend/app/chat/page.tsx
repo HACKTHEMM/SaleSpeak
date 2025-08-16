@@ -42,6 +42,12 @@ export default function ChatPage() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true)
   const [isAudioPlaying, setIsAudioPlaying] = useState(false)
   const [currentAudioId, setCurrentAudioId] = useState<string>("")
+
+  // Generate unique session ID for each chat session
+  const [sessionId] = useState<string>(() =>
+    `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  )
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
@@ -85,13 +91,19 @@ export default function ChatPage() {
     scrollToBottom()
   }, [messages])
 
-  // Robust function to stop any playing audio
+  // Enhanced audio cleanup function
   const stopAudio = () => {
-    console.log("🛑 Stopping audio")
+    console.log("🛑 Stopping audio - Enhanced cleanup")
     if (audioRef.current) {
       try {
+        // Stop playback immediately
         audioRef.current.pause()
         audioRef.current.currentTime = 0
+
+        // Clear the source completely to prevent caching issues
+        audioRef.current.src = ""
+        audioRef.current.removeAttribute("src")
+
         // Remove all event listeners to prevent memory leaks
         audioRef.current.onloadstart = null
         audioRef.current.oncanplay = null
@@ -101,49 +113,53 @@ export default function ChatPage() {
         audioRef.current.onerror = null
         audioRef.current.onabort = null
         audioRef.current.onstalled = null
+
+        // Force reload to clear internal state
+        audioRef.current.load()
         audioRef.current = null
       } catch (error) {
         console.error("Error stopping audio:", error)
       }
     }
     setIsAudioPlaying(false)
-    setCurrentAudioId("")
   }
-  // Improved audio play function with better state management
-  const playAudio = async (sessionId: string, messageId: string) => {
-    console.log(`=== AUDIO DEBUG ===`)
+
+  // Rewritten audio playback function with unique session handling
+  const playAudioWithSession = async (sessionId: string, messageId: string) => {
+    console.log(`🎵 === ENHANCED AUDIO PLAYBACK ===`)
     console.log(`Session ID: ${sessionId}`)
     console.log(`Message ID: ${messageId}`)
     console.log(`Audio enabled: ${isAudioEnabled}`)
-    console.log(`Audio endpoint: http://localhost:8000/get-audio/${sessionId}`)
-    
+
     // Always stop any currently playing audio first
     stopAudio()
-    
+
     // Check if audio is enabled
     if (!isAudioEnabled) {
-      console.log("❌ Audio is disabled - not starting playback")
+      console.log("❌ Audio is disabled - skipping playback")
       return
     }
-    
+
     if (!sessionId) {
       console.log("❌ No session ID provided")
       return
     }
 
     try {
-      // Create new audio element
+      // Create fresh audio element
       const audio = new Audio()
       console.log("🎵 Created new Audio element")
-      
-      // Set audio properties - use the new get-audio endpoint
-      audio.src = `http://localhost:8000/get-audio/${sessionId}`
+
+      // Generate unique URL with cache busting
+      const timestamp = Date.now()
+      const audioUrl = `http://localhost:8000/get-audio/${sessionId}?t=${timestamp}&msg=${messageId}`
+      audio.src = audioUrl
       audio.preload = 'auto'
       audio.volume = 1.0
-      
-      console.log("🎵 Audio src set to new endpoint, starting load...")
-      
-      // Set up event handlers with proper cleanup
+
+      console.log(`🎵 Audio URL: ${audioUrl}`)
+
+      // Event cleanup function
       const cleanup = () => {
         audio.onloadstart = null
         audio.oncanplay = null
@@ -154,35 +170,36 @@ export default function ChatPage() {
         audio.onabort = null
         audio.onstalled = null
       }
-      
+
+      // Set up event handlers
       audio.onloadstart = () => {
         console.log("📥 Audio loading started")
-        // Only update state if audio is still enabled
-        if (isAudioEnabled) {
+        if (isAudioEnabled && audioRef.current === audio) {
           setCurrentAudioId(messageId)
           setIsAudioPlaying(true)
         } else {
-          console.log("❌ Audio disabled during load - stopping")
+          console.log("❌ Audio disabled or replaced during load")
           audio.pause()
           cleanup()
-          return
         }
       }
-      
+
       audio.oncanplaythrough = () => {
-        console.log("✅ Audio ready to play through")
-        // Double-check audio is still enabled before playing
+        console.log("✅ Audio ready to play")
         if (isAudioEnabled && audioRef.current === audio) {
           audio.play().then(() => {
             console.log("🎵 Audio playback started successfully")
           }).catch(error => {
             console.error("❌ Audio play failed:", error)
-            setIsAudioPlaying(false)
-            setCurrentAudioId("")
-            cleanup()
+            if (audioRef.current === audio) {
+              setIsAudioPlaying(false)
+              setCurrentAudioId("")
+              cleanup()
+              audioRef.current = null
+            }
           })
         } else {
-          console.log("❌ Audio disabled or replaced during canplaythrough")
+          console.log("❌ Audio disabled or replaced before play")
           audio.pause()
           cleanup()
         }
@@ -196,7 +213,7 @@ export default function ChatPage() {
       }
 
       audio.onended = () => {
-        console.log("⏹️ Audio playback ended")
+        console.log("⏹️ Audio playback completed")
         if (audioRef.current === audio) {
           setIsAudioPlaying(false)
           setCurrentAudioId("")
@@ -207,7 +224,6 @@ export default function ChatPage() {
 
       audio.onerror = (error) => {
         console.error("❌ Audio error:", error)
-        console.error("❌ Audio error details:", audio.error)
         if (audioRef.current === audio) {
           setIsAudioPlaying(false)
           setCurrentAudioId("")
@@ -228,138 +244,10 @@ export default function ChatPage() {
       // Store reference and start loading
       audioRef.current = audio
       audio.load()
-      console.log("🎵 Audio load() called")
+      console.log("🎵 Audio load initiated")
 
     } catch (error) {
-      console.error("❌ Error in playAudio:", error)
-      setIsAudioPlaying(false)
-      setCurrentAudioId("")
-    }
-  }
-
-  // Improved audio play function using direct URL from API
-  const playAudioFromUrl = async (audioUrl: string, messageId: string) => {
-    console.log(`=== AUDIO URL DEBUG ===`)
-    console.log(`Audio URL: ${audioUrl}`)
-    console.log(`Message ID: ${messageId}`)
-    console.log(`Audio enabled: ${isAudioEnabled}`)
-    console.log(`Full URL: http://localhost:8000${audioUrl}`)
-    
-    // Always stop any currently playing audio first
-    stopAudio()
-    
-    // Check if audio is enabled
-    if (!isAudioEnabled) {
-      console.log("❌ Audio is disabled - not starting playback")
-      return
-    }
-    
-    if (!audioUrl) {
-      console.log("❌ No audio URL provided")
-      return
-    }
-
-    try {
-      // Create new audio element
-      const audio = new Audio()
-      console.log("🎵 Created new Audio element")
-      
-      // Set audio properties - use the provided audio URL
-      audio.src = `http://localhost:8000${audioUrl}`
-      audio.preload = 'auto'
-      audio.volume = 1.0
-      
-      console.log("🎵 Audio src set to URL endpoint, starting load...")
-      
-      // Set up event handlers with proper cleanup
-      const cleanup = () => {
-        audio.onloadstart = null
-        audio.oncanplay = null
-        audio.oncanplaythrough = null
-        audio.onplay = null
-        audio.onended = null
-        audio.onerror = null
-        audio.onabort = null
-        audio.onstalled = null
-      }
-      
-      audio.onloadstart = () => {
-        console.log("📥 Audio loading started")
-        // Only update state if audio is still enabled
-        if (isAudioEnabled) {
-          setCurrentAudioId(messageId)
-          setIsAudioPlaying(true)
-        } else {
-          console.log("❌ Audio disabled during load - stopping")
-          audio.pause()
-          cleanup()
-          return
-        }
-      }
-      
-      audio.oncanplaythrough = () => {
-        console.log("✅ Audio ready to play through")
-        // Double-check audio is still enabled before playing
-        if (isAudioEnabled && audioRef.current === audio) {
-          audio.play().then(() => {
-            console.log("🎵 Audio playback started successfully")
-          }).catch(error => {
-            console.error("❌ Audio play failed:", error)
-            setIsAudioPlaying(false)
-            setCurrentAudioId("")
-            cleanup()
-          })
-        } else {
-          console.log("❌ Audio disabled or replaced during canplaythrough")
-          audio.pause()
-          cleanup()
-        }
-      }
-
-      audio.onplay = () => {
-        console.log("▶️ Audio is now playing")
-        if (audioRef.current === audio) {
-          setIsAudioPlaying(true)
-        }
-      }
-
-      audio.onended = () => {
-        console.log("⏹️ Audio playback ended")
-        if (audioRef.current === audio) {
-          setIsAudioPlaying(false)
-          setCurrentAudioId("")
-          cleanup()
-          audioRef.current = null
-        }
-      }
-
-      audio.onerror = (error) => {
-        console.error("❌ Audio error:", error)
-        console.error("❌ Audio error details:", audio.error)
-        if (audioRef.current === audio) {
-          setIsAudioPlaying(false)
-          setCurrentAudioId("")
-          cleanup()
-          audioRef.current = null
-        }
-      }
-
-      audio.onabort = () => {
-        console.log("⚠️ Audio loading aborted")
-        if (audioRef.current === audio) {
-          setIsAudioPlaying(false)
-          setCurrentAudioId("")
-          cleanup()
-        }
-      }
-
-      // Store reference and start loading
-      audioRef.current = audio
-      audio.load()
-      console.log("🎵 Audio load() called")
-
-    } catch (error) {
-      console.error("❌ Error in playAudioFromUrl:", error)
+      console.error("❌ Error in playAudioWithSession:", error)
       setIsAudioPlaying(false)
       setCurrentAudioId("")
     }
@@ -379,16 +267,17 @@ export default function ChatPage() {
     setIsAudioEnabled(newAudioState)
     console.log(`Audio ${newAudioState ? 'enabled' : 'disabled'}`)
   }
+  // Enhanced message handling with unique session IDs
   const handleSendMessage = async (content: string) => {
-    if (!content.trim()) return
+    if (!content) return
 
     // Prevent duplicate submissions
     if (isTyping) return
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user_${Date.now()}`,
       type: "user",
-      content: content.trim(),
+      content: content,
       timestamp: new Date(),
       language: currentLanguage,
     }
@@ -400,7 +289,9 @@ export default function ChatPage() {
     stopAudio()
 
     try {
-      // Call the start-assistant API directly
+      console.log(`🚀 Sending message with session ID: ${sessionId}`)
+
+      // Call the start-assistant API with unique session ID
       const response = await fetch("http://localhost:8000/start-assistant/", {
         method: "POST",
         headers: {
@@ -408,7 +299,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           transcript: content.trim(),
-          session_id: "1"
+          session_id: sessionId
         })
       })
 
@@ -422,7 +313,7 @@ export default function ChatPage() {
         throw new Error("Invalid response format")
       }
 
-      const assistantMessageId = (Date.now() + 1).toString()
+      const assistantMessageId = `assistant_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
       const assistantMessage: Message = {
         id: assistantMessageId,
         type: "assistant",
@@ -440,36 +331,19 @@ export default function ChatPage() {
       console.log("API Response data:", data)
       console.log("Audio file from API:", data.audio_file)
       console.log("Audio URL from API:", data.audio_url)
-      console.log("Static audio URL from API:", data.static_audio_url)
-      console.log("Audio filename from API:", data.audio_filename)
-      console.log("Products from API:", data.products)
-      if (data.products && Array.isArray(data.products)) {
-        console.log("Products array length:", data.products.length)
-        data.products.forEach((product: any, index: number) => {
-          console.log(`Product ${index}:`, product)
-          console.log(`Product ${index} properties:`, Object.keys(product))
-        })
-      }
+      console.log("Session ID used:", sessionId)
       console.log("Current isAudioEnabled:", isAudioEnabled)
       
-      // Then handle audio - with a small delay to ensure state is updated
+      // Handle audio with delay to ensure state is updated
       setTimeout(() => {
         if ((data.audio_file || data.audio_url) && isAudioEnabled) {
-          console.log("✅ Conditions met, starting audio playbook")
-          // Use the new audio_url if available, otherwise fall back to session-based endpoint
-          if (data.audio_url) {
-            playAudioFromUrl(data.audio_url, assistantMessageId)
-          } else {
-            // Fallback to session-based endpoint
-            playAudio("1", assistantMessageId) // Pass session_id
-          }
+          console.log("✅ Starting audio playback with session ID")
+          playAudioWithSession(sessionId, assistantMessageId)
         } else {
           console.log("❌ Audio not started")
           console.log(`- Has audio file: ${!!data.audio_file}`)
           console.log(`- Has audio URL: ${!!data.audio_url}`)
           console.log(`- Audio enabled: ${isAudioEnabled}`)
-          console.log(`- Audio file value: "${data.audio_file}"`)
-          console.log(`- Audio URL value: "${data.audio_url}"`)
         }
       }, 100)
 
@@ -479,7 +353,7 @@ export default function ChatPage() {
       
       // Add error message
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `error_${Date.now()}`,
         type: "assistant",
         content: "Sorry, I encountered an error. Please try again.",
         timestamp: new Date(),
@@ -721,3 +595,6 @@ export default function ChatPage() {
     </div>
   )
 }
+
+
+// Mahipal ke karam
