@@ -14,6 +14,7 @@ load_dotenv()
 os.environ['GROQ_API_KEY'] = load_yaml('GROQ_API_KEY')
 os.environ['SERP_API_KEY'] = load_yaml('SERP_API_KEY')
 
+
 app = FastAPI(title="Enhanced Voice Assistant API")
 static_dir = os.path.join(os.getcwd(), "static")
 if not os.path.exists(static_dir):
@@ -23,7 +24,7 @@ session_responses: Dict[str, str] = {}
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace * with frontend origin for production
+    allow_origins=["*"],  # Replace * with frontend origin for productions
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
