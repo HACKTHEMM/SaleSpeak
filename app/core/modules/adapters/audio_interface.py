@@ -3,6 +3,8 @@ import time
 import queue
 import concurrent.futures
 from typing import Optional, Callable, Dict, Any
+import re
+import html as html_unescape
 from abc import ABC, abstractmethod
 import logging
 from dataclasses import dataclass
@@ -31,6 +33,22 @@ class AudioTask:
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = time.time()
+
+
+def _html_to_plain_text(value: str) -> str:
+    try:
+        if not isinstance(value, str):
+            value = str(value)
+        text = value
+        text = re.sub(r"(?i)<br\s*/?>", "\n", text)
+        text = re.sub(r"(?i)</li>", "\n", text)
+        text = re.sub(r"(?i)<li>\s*", "- ", text)
+        text = re.sub(r"<[^>]+>", "", text)
+        text = html_unescape.unescape(text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+    except Exception:
+        return str(value)
 
 class ThreadSafeCounter:
     """Thread-safe counter for generating unique task IDs"""
@@ -110,7 +128,8 @@ class TTSAdapter(AudioProcessor):
                     task.status = TaskStatus.PROCESSING
                     self.active_tasks[task.task_id] = task
                 
-                logger.info(f"Processing TTS task {task.task_id}: {task.text[:30]}...")
+                safe_text = task.text if isinstance(task.text, str) else str(task.text)
+                logger.info(f"Processing TTS task {task.task_id}: {safe_text[:30]}...")
                 
                 # Process the task
                 try:
@@ -154,12 +173,13 @@ class TTSAdapter(AudioProcessor):
     def _process_tts_task(self, task: AudioTask) -> Optional[str]:
         """Process individual TTS task using synchronized TTS"""
         try:
-            logger.info(f"Processing TTS task {task.task_id}: {task.text[:50]}{'...' if len(task.text) > 50 else ''}")
+            safe_text = task.text if isinstance(task.text, str) else str(task.text)
+            logger.info(f"Processing TTS task {task.task_id}: {safe_text[:50]}{'...' if len(safe_text) > 50 else ''}")
             
             # Use the new synchronized TTS method
             if hasattr(self.tts_instance, 'convert_text_synchronized'):
                 # Generate a unique task ID for TTS internal tracking
-                tts_task_id = self.tts_instance.convert_text_synchronized(task.text)
+                tts_task_id = self.tts_instance.convert_text_synchronized(safe_text)
                 
                 if tts_task_id:
                     # Wait for the TTS task to complete
@@ -177,7 +197,7 @@ class TTSAdapter(AudioProcessor):
             else:
                 # Fallback to old method if synchronized method not available
                 logger.warning("Using fallback TTS method - synchronization may be affected")
-                self.tts_instance.add_text(task.text)
+                self.tts_instance.add_text(safe_text)
                 
                 # Wait for audio generation with timeout
                 max_wait = 15
@@ -444,14 +464,18 @@ class VoiceAssistant:
                     'last_processed_time': time.time()
                 })
             
-            result = {"text": response}
+            # Ensure we have plain text for downstream TTS
+            response_text = response.get("text", "") if isinstance(response, dict) else str(response)
+            result = {"text": response_text}
             
             # Generate audio if requested
             if include_audio:
                 try:
                     audio_start_time = time.time()
                     # Use high priority for audio generation
-                    audio_file_path = self.tts_adapter.speak_text(response, priority=1, timeout=20.0)
+                    # Convert HTML to plain text for TTS to avoid reading tags
+                    tts_text = _html_to_plain_text(response_text)
+                    audio_file_path = self.tts_adapter.speak_text(tts_text, priority=1, timeout=20.0)
                     audio_time = time.time() - audio_start_time
                     
                     result["audio_file"] = audio_file_path or ""

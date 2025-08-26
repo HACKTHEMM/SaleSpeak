@@ -1,14 +1,14 @@
-import yaml 
+import os
+from dotenv import load_dotenv
 
 
-def load_yaml(key) -> str:
-    with open('./config.yaml', 'r') as file:
-        config = yaml.safe_load(file)
-        data = config.get(key)
-        return data
-    
+load_dotenv()
+
+
+def load_env(key: str, default: str | None = None) -> str | None:
+    return os.getenv(key, default)
+
 
 if __name__ == "__main__":
-    # Example usage
     key = "MODEL_ID"
-    print(load_yaml(key))
+    print(load_env(key))

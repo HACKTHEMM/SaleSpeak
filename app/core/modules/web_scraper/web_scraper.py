@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import asyncio
 from functools import partial
-from app.helper.get_config import load_yaml
+from app.helper.get_config import load_env
 
 # Load .env file from the backend root directory
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '.env'))
@@ -21,12 +21,9 @@ class LenDenClubSearcher:
     """
     
     def __init__(self, serpapi_key: Optional[str] = None, max_workers: int = 5):
-        self.serpapi_key = serpapi_key or os.getenv("SERPAPI_KEY")
+        self.serpapi_key = serpapi_key or os.getenv("SERP_API_KEY") or load_env('SERP_API_KEY')
         if not self.serpapi_key:
-            try:
-                self.serpapi_key = load_yaml('SERP_API_KEY')
-            except:
-                raise ValueError("SERPAPI_KEY is required. Get it from https://serpapi.com/")
+            raise ValueError("SERP_API_KEY is required. Get it from https://serpapi.com/")
         
         # Thread pool configuration
         self.max_workers = max_workers

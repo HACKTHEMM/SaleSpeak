@@ -26,9 +26,32 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const { toast } = useToast()
   const isUser = message.type === "user"
 
+  const htmlToPlainText = (value: string): string => {
+    try {
+      if (!value) return ""
+      let text = value
+      text = text.replace(/<br\s*\/?>(?=\s*[^>]|$)/gi, "\n")
+      text = text.replace(/<li\b[^>]*>/gi, "- ")
+      text = text.replace(/<\/(li|p|div|ul|ol|h[1-6])>/gi, "\n")
+      text = text.replace(/<[^>]+>/g, "")
+      // Decode HTML entities using browser
+      if (typeof window !== "undefined") {
+        const textarea = document.createElement("textarea")
+        textarea.innerHTML = text
+        text = textarea.value
+      }
+      text = text.replace(/\n{3,}/g, "\n\n").trim()
+      return text
+    } catch {
+      return value
+    }
+  }
+
+  const displayContent = htmlToPlainText(message.content)
+
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(message.content)
+      await navigator.clipboard.writeText(displayContent)
       setIsCopied(true)
       toast({
         description: "Message copied to clipboard",
@@ -83,7 +106,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
           >
-            <p className="text-sm leading-relaxed font-medium">{message.content}</p>
+            <p className="text-sm leading-relaxed font-medium whitespace-pre-line">{displayContent}</p>
             
             {/* Copy button - appears on hover */}
             <button

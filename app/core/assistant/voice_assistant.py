@@ -10,7 +10,7 @@ from app.core.modules.adapters.tts import RealTimeTTS
 from app.core.modules.llm.language_processor import LanguageProcessor, QueryClassifier
 from app.core.modules.adapters.audio_interface import TTSAdapter, VoiceAssistant
 
-from app.helper.get_config import load_yaml
+from app.helper.get_config import load_env
 
 
 load_dotenv()
@@ -28,9 +28,7 @@ class IntegratedVoiceAssistant:
     def __init__(self, groq_api_key: Optional[str] = None, max_workers: int = 4):
         with self._lock:
             if not hasattr(self, 'is_initialized'):
-                self.groq_api_key = groq_api_key or os.getenv("GROQ_API_KEY")
-                if not self.groq_api_key:
-                    self.groq_api_key = load_yaml('GROQ_API_KEY')
+                self.groq_api_key = groq_api_key or os.getenv("GROQ_API_KEY") or load_env('GROQ_API_KEY')
                 if not self.groq_api_key:
                     raise ValueError("GROQ_API_KEY is required. Set it in your .env file or pass it as parameter.")
                 self.stt_instance = None
@@ -62,9 +60,9 @@ class IntegratedVoiceAssistant:
                 print("Setting up Language Processing (LangChain + Groq)...")
                 return LanguageProcessor(
                     api_key=self.groq_api_key,
-                    model_name=load_yaml('MODEL_ID'),
-                    master_db_path=load_yaml('MASTER_DB_PATH'),
-                    conversation_db_path=load_yaml('CHILD_DB_PATH')
+                    model_name=load_env('MODEL_ID'),
+                    master_db_path=load_env('MASTER_DB_PATH'),
+                    conversation_db_path=load_env('CHILD_DB_PATH')
                 )
             
             init_tasks['language_processor'] = self.thread_pool.submit(init_language_processor)

@@ -10,7 +10,7 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
-from app.helper.get_config import load_yaml
+from app.helper.get_config import load_env
 
 # Import the fixed embedding classes
 from app.core.modules.embeddings.embeddings_RAG import (
@@ -31,7 +31,7 @@ from app.core.modules.web_scraper.web_scraper import (
 load_dotenv()
 
 class LanguageProcessor:    
-    def __init__(self, api_key: Optional[str] = None, model_name: str = load_yaml('MODEL_ID'),
+    def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None,
                  use_conversation_context: bool = True, conversation_collection: str = "conversation_context",
                  use_master_db: bool = True, master_db_collection: str = "chromadb",
                  master_db_path: Optional[str] = None, conversation_db_path: Optional[str] = None,
@@ -53,12 +53,9 @@ class LanguageProcessor:
         self.active_futures = []
         
         # Basic setup
-        self.api_key = api_key or os.getenv("GROQ_API_KEY")
+        self.api_key = api_key or os.getenv("GROQ_API_KEY") or load_env('GROQ_API_KEY')
         if not self.api_key:
-            try:
-                self.api_key = load_yaml('GROQ_API_KEY')
-            except:
-                raise ValueError("GROQ_API_KEY is required")
+            raise ValueError("GROQ_API_KEY is required")
         
         # Web scraper setup
         self.use_web_scraper = use_web_scraper
@@ -74,7 +71,7 @@ class LanguageProcessor:
                 print(f"✗ Warning: Web scraper initialization failed: {str(e)}")
                 self.use_web_scraper = False
         
-        self.model_name = model_name
+        self.model_name = model_name or load_env('MODEL_ID') or "mixtral-8x7b-32768"
         self.conversation_id = str(uuid.uuid4())
         self.response_language = response_language
         self.allow_mixed_language = allow_mixed_language

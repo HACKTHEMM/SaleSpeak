@@ -16,8 +16,9 @@ export class CustomVoiceRecognitionService {
   private apiEndpoint: string
   private abortController: AbortController | null = null
 
-  constructor(apiEndpoint = "http://localhost:8000/recognize") {
-    this.apiEndpoint = apiEndpoint
+  constructor(apiEndpoint?: string) {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || ""
+    this.apiEndpoint = apiEndpoint || `${baseUrl}/recognize`
   }
 
   public async initialize(): Promise<boolean> {

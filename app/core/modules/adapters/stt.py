@@ -11,7 +11,7 @@ from groq import Groq
 import pyaudio
 import wave
 from dotenv import load_dotenv
-from app.helper.get_config import load_yaml
+from app.helper.get_config import load_env
 
 load_dotenv()
 
@@ -76,12 +76,9 @@ class VoiceActivityDetector:
 
 class RealTimeTranscriber:
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.getenv("GROQ_API_KEY")
+        self.api_key = api_key or os.getenv("GROQ_API_KEY") or load_env('GROQ_API_KEY')
         if not self.api_key:
-            try:
-                self.api_key = load_yaml('GROQ_API_KEY')
-            except:            
-                raise ValueError("GROQ_API_KEY must be provided or set as environment variable")
+            raise ValueError("GROQ_API_KEY must be provided or set as environment variable")
             
         self.client = Groq(api_key=self.api_key)
         self.CHUNK = 1024

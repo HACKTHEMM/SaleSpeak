@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
-from app.helper.get_config import load_yaml
+from app.helper.get_config import load_env
 
 load_dotenv()
 
@@ -32,7 +32,7 @@ class TTSConfig:
 
 @dataclass
 class LLMConfig:
-    model: str = load_yaml('MODEL_ID')
+    model: str = load_env('MODEL_ID') or "mixtral-8x7b-32768"
     temperature: float = 0.7
     max_tokens: int = 4096
     top_p: float = 1.0
@@ -41,7 +41,7 @@ class LLMConfig:
 
 @dataclass
 class VoiceAssistantConfig:
-    groq_api_key: Optional[str] = load_yaml('GROQ_API_KEY')
+    groq_api_key: Optional[str] = load_env('GROQ_API_KEY')
     
     audio: AudioConfig = None
     stt: STTConfig = None
@@ -97,7 +97,7 @@ class ConfigManager:
     def _load_from_environment(self, config: VoiceAssistantConfig) -> None:
         config.groq_api_key = os.getenv("GROQ_API_KEY", config.groq_api_key)
         if not config.groq_api_key:
-            load_yaml('GROQ_API_KEY')
+            config.groq_api_key = load_env('GROQ_API_KEY')
         
         config.audio.chunk_size = int(os.getenv("AUDIO_CHUNK_SIZE", config.audio.chunk_size))
         config.audio.sample_rate = int(os.getenv("AUDIO_SAMPLE_RATE", config.audio.sample_rate))

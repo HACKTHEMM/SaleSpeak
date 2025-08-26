@@ -1,435 +1,280 @@
-# SalesSpeak - Conversational AI Sales Assistant
+## SalesSpeak - Conversational AI Sales Assistant
 
-A sophisticated conversational agent that helps users make better decisions while buying products online through natural voice interactions and intelligent product recommendations.
+A conversational agent that helps users make better decisions while buying products online through natural voice interactions and intelligent product recommendations.
 
-## 🌟 Key Features
+### 🌟 Key Features
 
-- 🎤 *Real-time Voice Processing*: Advanced speech-to-text and text-to-speech capabilities
-- 🤖 *AI-Powered Conversations*: Natural language processing using Groq LLM (Gemma2-9B-IT model)
-- 💬 *Sales-Focused Responses*: Persuasive and engaging conversational style optimized for sales
-- 🔍 *Intelligent Query Processing*: Context-aware conversation management with embeddings
-- 🌐 *Multi-language Support*: Supports multiple languages including Hindi and English
-- 📱 *Modern Web Interface*: Responsive Next.js frontend with real-time voice interaction
-- 🚀 *FastAPI Backend*: High-performance API with comprehensive error handling
-- 💾 *Conversation Memory*: ChromaDB integration for conversation context and history
+- **Real-time voice**: Advanced speech-to-text and text-to-speech
+- **AI conversations**: Powered by Groq-hosted LLMs
+- **Sales-focused tone**: Persuasive and engaging responses
+- **Context awareness**: Embeddings and conversation memory with ChromaDB
+- **Multi-language**: English, Hindi, and code-switching
+- **Modern UI**: Next.js frontend with live voice interaction
+- **Robust API**: FastAPI backend with CORS and rich error logs
 
-## 🏗 Architecture
+### 🏗 Architecture
 
-The project consists of three main components:
+- **Backend API** (`/app`): FastAPI + voice processing + AI
+- **Frontend** (`/frontend`): Next.js app and components
+- **Inference** (`run_inference.py`): CSV batch QA engine
 
-1. *Backend API* (/app): FastAPI-based server with voice processing and AI capabilities
-2. *Frontend Interface* (/Frontend): Next.js web application with voice recognition UI
-3. *Inference Engine* (run_inference.py): Batch processing for CSV-based question answering
+### 📋 Prerequisites
 
-## 📋 Prerequisites
+- **Python 3.8+**
+- **Node.js 18+** and **npm**
+- **Groq API key** and **SerpAPI key**
+- Git
 
-Before setting up the project, ensure you have:
+## 🚀 Setup
 
-- *Python 3.8+*
-- *Node.js 18+* and *npm*
-- *[Groq API Key](https://console.groq.com/)* (Required)
-- *[SerpAPI Key](https://serpapi.com/)* (Required)
-- *[Clerk API Key](https://clerk.com/)* (Required for frontend)
-- *Git* for version control
+### 1) Clone
 
-## 🚀 Setup Instructions
-
-### 1. Environment Setup
-
-First, clone the repository and navigate to the project directory:
-
-bash
+```bash
 git clone https://github.com/HACKTHEMM/VoiceBot_HackThem_submission.git
 cd VoiceBot_HackThem_submission
+```
 
+### 2) Python environment
 
-### 2. Backend Setup
-
-#### Create and Activate Virtual Environment
-
-bash
-# Create virtual environment
+```bash
+# Create venv
 python -m venv venv
 
-# Activate virtual environment
-# On macOS/Linux:
+# Activate
+# macOS/Linux
 source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
+# Windows (PowerShell)
+./venv/Scripts/Activate.ps1
+```
 
+Install dependencies:
 
-#### Install Python Dependencies
-
-bash
+```bash
 pip install -r requirements.txt
+```
 
+### 3) Backend environment variables
 
-#### Environment Variables
+Create a `.env` file in the project root:
 
-Create a .env file in the root directory with the following variables:
-
-env
-# Required API Keys
+```env
+# API Keys
 GROQ_API_KEY=your_groq_api_key_here
-SERPAPI_KEY=your_serpapi_key_here
+SERP_API_KEY=your_serpapi_key_here
 
-# Model Configuration
-MODEL_ID='meta-llama/llama-4-scout-17b-16e-instruct'
+# Model
+MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
 
-# Database Paths (Adjust paths according to your system)
-MASTER_DB_PATH=./chromadb_storage/master_db
-CHILD_DB_PATH=./chromadb_storage/conversation_db
+# Database paths (adjust as needed)
+MASTER_DB_PATH=./app/chromadb_storage/master_db
+CHILD_DB_PATH=./app/chromadb_storage/conversation_db
+```
 
+### 4) Frontend setup
 
-### 3. Frontend Setup
-
-Navigate to the frontend directory and install dependencies:
-
-bash
+```bash
 cd frontend
 npm install --force
 npm run build
+cd ..
+```
 
+Optional frontend env (`frontend/.env.local`):
 
-Create a frontend environment file (.env.local inside the frontend directory):
-
-env
-# Backend API URL
+```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
-
-# Clerk API Configuration
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key_here
 CLERK_SECRET_KEY=your_clerk_secret_key_here
+```
 
+## 🏃‍♂️ Run
 
-Navigate back to the root directory:
+### Option A: Full app (backend + frontend)
 
-bash
-cd ..
+Runs both servers; handles installs/builds where needed.
 
+```bash
+python main.py
+```
 
-## 🏃‍♂ Running the Application
+Backend: `http://localhost:8000`
 
-### Option 1: Run Inference Engine (Round 1 Evaluation)
+Frontend: `http://localhost:3000`
 
-For batch processing of questions from a CSV file:
+### Option B: Backend only
 
-bash
-# Ensure virtual environment is activated
-source venv/bin/activate  # On macOS/Linux
-# venv\Scripts\activate   # On Windows
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-# Run the inference script
+### Option C: Inference (batch CSV)
+
+```bash
+# Ensure venv is active
 python run_inference.py
+```
 
+Generates answers for `test.csv` and writes `output.csv`.
 
-This will:
-- Read questions from test.csv
-- Process each question through the AI assistant
-- Generate responses and save them to output.csv
+Custom invocation:
 
-#### Custom CSV Processing
-
-You can specify custom input and output files:
-
-python
-# In run_inference.py or directly
+```python
 from run_inference import run_inferance
 
 run_inferance(
-    csv_input_path="./your_questions.csv", 
-    csv_output_path="./your_responses.csv"
+    csv_input_path="./your_questions.csv",
+    csv_output_path="./your_responses.csv",
 )
+```
 
+## 📚 API
 
-### Option 2: Run Live Demo (Full Application)
+### Health
 
-#### Prerequisites for Live Demo
-
-1. Ensure virtual environment is activated:
-bash
-source venv/bin/activate  # On macOS/Linux
-# venv\Scripts\activate   # On Windows
-
-
-2. Ensure frontend is built (if not done already):
-bash
-cd frontend
-npm install --force
-npm run build
-cd ..
-
-
-#### Start the Live Demo
-
-Run the main application:
-
-bash
-python main.py
-
-
-This will start both the backend API and frontend application. The application will be available at the URL displayed in the terminal.
-
-## 📚 API Documentation
-
-### Main API Endpoints
-
-#### Health Check
-http
+```http
 GET /
+```
 
-Returns API status and health information.
+### Start assistant
 
-#### Voice Assistant Interaction
-http
+```http
 POST /start-assistant/
 Content-Type: application/json
 
 {
-    "transcript": "Your voice message text here",
-    "session_id": "unique-session-identifier"
+  "transcript": "Your voice message text here",
+  "session_id": "unique-session-identifier"
 }
+```
 
+Sample response (fields may vary):
 
-*Response:*
-json
+```json
 {
-    "success": true,
-    "text": "AI generated response text",
-    "audio_file": "path/to/generated/audio/file.wav",
-    "products": [],
-    "message": "Generated response based on transcript"
+  "success": true,
+  "text": "AI generated response text",
+  "audio_file": "path/to/generated/audio/file.wav",
+  "audio_url": "/get-audio/<session_id>",
+  "static_audio_url": "/static/audio/<filename>.wav",
+  "audio_filename": "<filename>.wav",
+  "products": [],
+  "message": "Generated response based on transcript",
+  "execution_time": {
+    "assistant_processing_time": 0.123,
+    "total_execution_time": 0.456
+  }
 }
+```
 
+### Transcript echo (testing)
 
-#### Transcript Testing
-http
+```http
 POST /get-transcript
 Content-Type: application/json
 
 {
-    "transcript": "Test transcript",
-    "session_id": "test-session"
+  "transcript": "Test transcript",
+  "session_id": "test-session"
 }
+```
 
+### Get audio file for a session
 
-## 📁 Project Structure
+```http
+GET /get-audio/{session_id}
+```
 
+### Get latest response metadata
 
-SalesSpeak_HackThem_submission/
-├── README.md                     # This file
-├── requirements.txt              # Python dependencies
-├── config.yaml                   # Configuration settings
-├── main.py                       # Main execution entry point
-├── run_inference.py              # Batch inference engine
-├── test.csv                      # Sample questions for testing
-├── output.csv                    # Generated responses
-├── .env                          # Environment variables (create this)
-│
-├── app/                          # Backend API
-│   ├── main.py                   # FastAPI application
+```http
+GET /get-latest-response/{session_id}
+```
+
+### Debug session
+
+```http
+GET /debug-session/{session_id}
+```
+
+## 📁 Project structure
+
+```
+SalesSpeak/
+├── README.md
+├── requirements.txt
+├── main.py                         # Orchestrates backend + frontend
+├── run_inference.py                # Batch inference
+├── test.csv                        # Sample questions
+├── output.csv                      # Batch outputs
+├── .env                            # Backend environment (create)
+├── app/
+│   ├── main.py                     # FastAPI application
 │   ├── core/
 │   │   ├── assistant/
-│   │   │   └── voice_assistant.py # Main voice assistant logic
+│   │   │   └── voice_assistant.py
 │   │   └── modules/
-│   │       ├── adapters/         # Audio I/O adapters
-│   │       ├── embeddings/       # RAG and embedding management
-│   │       └── llm/              # Language model processing
+│   │       ├── adapters/
+│   │       ├── embeddings/
+│   │       └── llm/
 │   ├── helper/
-│   │   ├── config.py             # Configuration management
-│   │   └── get_config.py         # YAML config loader
-│   └── models/
-│       └── transcript.py         # Data models
-│
-└── Frontend/                     # Next.js Frontend
-    ├── package.json              # Node.js dependencies
-    ├── app/                      # Next.js app directory
-    ├── components/               # React components
-    ├── hooks/                    # React hooks
-    ├── services/                 # API services
-    └── public/                   # Static assets
+│   │   ├── config.py
+│   │   └── get_config.py
+│   ├── models/
+│   │   └── transcript.py
+│   └── chromadb_storage/
+└── frontend/
+    ├── package.json
+    ├── app/
+    ├── components/
+    ├── hooks/
+    ├── services/
+    └── public/
+```
 
+## 🔧 Configuration notes
 
-## 🔧 Required Environment Variables
+- **LLM**: `MODEL_ID` defaults to `meta-llama/llama-4-scout-17b-16e-instruct` (Groq)
+- **STT**: Google Speech-to-Text
+- **TTS**: Edge-TTS
+- **DB**: ChromaDB for master and per-session memory
 
-### Backend (.env file in root directory)
+## 🧪 Quick testing
 
-env
-# Required API Keys
-GROQ_API_KEY=your_groq_api_key_here
-SERPAPI_KEY=your_serpapi_key_here
-
-# Model Configuration
-MODEL_ID=gemma2-9b-it
-
-# Database Paths
-MASTER_DB_PATH=./chromadb_storage/master_db
-CHILD_DB_PATH=./chromadb_storage/conversation_db
-
-
-
-### Frontend (.env.local file in frontend directory)
-
-env
-# Backend API URL
-NEXT_PUBLIC_API_URL=http://localhost:8000
-
-# Clerk API Configuration
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key_here
-CLERK_SECRET_KEY=your_clerk_secret_key_here
-
-
-### How to Get API Keys
-
-1. *Groq API Key*: 
-   - Visit [Groq Console](https://console.groq.com/)
-   - Sign up/Login and navigate to API Keys section
-   - Create a new API key
-
-2. *SerpAPI Key*:
-   - Visit [SerpAPI](https://serpapi.com/)
-   - Sign up/Login and go to dashboard
-   - Copy your API key from the dashboard
-
-3. *Clerk API Keys*:
-   - Visit [Clerk Dashboard](https://clerk.com/)
-   - Create a new application
-   - Copy the publishable key and secret key from API Keys section
-
-## 🔧 Configuration
-
-### Model Configuration
-
-The system uses the following default models:
-- *LLM*: 'meta-llama/llama-4-scout-17b-16e-instruct' (Groq)
-- *STT*: 'Google Speech-to-text
-- *TTS*: 'Edge-TTS'
-
-### Database Configuration
-
-The system uses ChromaDB for:
-- *Master Database*: Product knowledge and general information
-- *Conversation Database*: Session-specific conversation history
-
-### Audio Configuration
-
-Default audio settings:
-- *Sample Rate*: 16,000 Hz
-- *Channels*: Mono (1)
-- *Chunk Size*: 4,096 bytes
-- *Record Duration*: 3 seconds
-
-## 🧪 Testing
-
-### Test the Backend API
-
-bash
-# Test the health endpoint
+```bash
 curl http://localhost:8000/
 
-# Test voice assistant with sample data
 curl -X POST "http://localhost:8000/start-assistant/" \
-     -H "Content-Type: application/json" \
-     -d '{"transcript": "Hello, I want to buy a laptop", "session_id": "test-123"}'
-
-
-### Test with Sample CSV
-
-The project includes a test.csv file with sample questions in multiple languages:
-
-csv
-question,response
-मुझे आपके प्लेटफॉर्म के ज़रिए निवेश क्यों करना चाहिए?,
-अगर मैं small amount से invest करूं तो क्या आपके platform पर अच्छा return मिल सकता है?,
-क्या आपके platform पर invest करना safe है या इसमें ज़्यादा risk है?,
-What makes your platform a better choice for small investors?,
-How does your platform help me grow my wealth steadily?
-
+  -H "Content-Type: application/json" \
+  -d '{"transcript": "Hello, I want to buy a laptop", "session_id": "test-123"}'
+```
 
 ## 🚨 Troubleshooting
 
-### Common Issues
+- **Missing API keys**: Ensure `.env` has `GROQ_API_KEY` and `SERP_API_KEY` (note the name).
+- **Frontend peer deps**: Run `npm install --force` in `frontend/`.
+- **Virtualenv issues**: Reactivate the venv and reinstall requirements.
+- **Audio device errors**: Grant microphone permissions to your terminal/IDE.
+- **Imports fail**: Run commands from the repo root.
 
-1. *Missing API Keys Error*
-   
-   Error: GROQ_API_KEY not found!
-   Error: SERPAPI_KEY not found!
-   
-   *Solution*: Ensure your .env file contains valid API keys for Groq and SerpAPI.
+## 📊 Usage examples
 
-2. *Frontend Build Errors*
-   
-   npm ERR! peer dep missing
-   
-   *Solution*: Use npm install --force to bypass peer dependency conflicts.
-
-3. *Virtual Environment Not Activated*
-   
-   ModuleNotFoundError: No module named 'xyz'
-   
-   *Solution*: Ensure virtual environment is activated before running Python scripts.
-
-4. *Audio Permissions Error*
-   
-   pyaudio.PyAudioError: [Errno -9986] Invalid input device
-   
-   *Solution*: Grant microphone permissions to your terminal/IDE.
-
-5. *Module Import Errors*
-   
-   ImportError: No module named 'app.core.assistant'
-   
-   *Solution*: Ensure you're running from the project root directory.
-
-6. *Clerk Authentication Issues*
-   
-   Clerk: Missing publishable key
-   
-   *Solution*: Verify Clerk API keys are properly set in frontend/.env.local.
-
-
-### Quick Setup Checklist
-
-- [ ] Python 3.8+ installed
-- [ ] Node.js 18+ installed
-- [ ] Virtual environment created and activated
-- [ ] Requirements installed (pip install -r requirements.txt)
-- [ ] .env file created with Groq and SerpAPI keys
-- [ ] Frontend dependencies installed (npm install --force)
-- [ ] Frontend built (npm run build)
-- [ ] Clerk API keys configured in frontend/.env.local
-
-## 📊 Usage Examples
-
-### Voice Assistant Conversations
-
-The assistant is optimized for sales conversations and can handle queries like:
-
-- *Product Inquiries*: "Tell me about your investment platform"
-- *Pricing Questions*: "What are the fees for small investments?"
-- *Safety Concerns*: "Is it safe to invest through your platform?"
-- *Comparison Requests*: "How does this compare to other platforms?"
-
-### Multi-language Support
-
-The system supports conversations in:
-- *English*: Full feature support
-- *Hindi*: Natural language processing and responses
-- *Mixed Language*: Code-switching between languages
+- **Product inquiries**: "Tell me about your investment platform"
+- **Pricing**: "What are the fees for small investments?"
+- **Safety**: "Is it safe to invest through your platform?"
+- **Comparison**: "How does this compare to other platforms?"
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (git checkout -b feature/amazing-feature)
-3. Commit your changes (git commit -m 'Add some amazing feature')
-4. Push to the branch (git push origin feature/amazing-feature)
-5. Open a Pull Request
+1) Fork the repository
+2) Create a feature branch: `git checkout -b feature/amazing-feature`
+3) Commit: `git commit -m "Add some amazing feature"`
+4) Push: `git push origin feature/amazing-feature`
+5) Open a Pull Request
 
 ## 📝 License
 
-This project is part of the HackThem The Matrix Protocol submission. Please refer to the competition guidelines for usage terms.
-
+This project is part of the HackThem The Matrix Protocol submission. See competition guidelines for usage terms.
 
 ---
 
-*Team HackThem* - Building the future of conversational AI for e-commerce decisions.
+Team HackThem — Building the future of conversational AI for e-commerce decisions.

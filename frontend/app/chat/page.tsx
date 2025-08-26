@@ -26,6 +26,9 @@ interface Message {
 }
 
 export default function ChatPage() {
+  // Unique session id per chat session for audio retrieval
+  const [sessionId] = useState<string>(() => `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`)
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -72,6 +75,12 @@ export default function ChatPage() {
     return () => {
       if (audioRef.current) {
         audioRef.current.pause()
+        // Clear source and force reload to reset
+        try {
+          audioRef.current.src = ""
+          audioRef.current.removeAttribute("src")
+          audioRef.current.load()
+        } catch {}
         audioRef.current = null
       }
     }
@@ -87,11 +96,14 @@ export default function ChatPage() {
 
   // Robust function to stop any playing audio
   const stopAudio = () => {
-    console.log("🛑 Stopping audio")
+    console.log("🛑 Stopping audio - Enhanced cleanup")
     if (audioRef.current) {
       try {
         audioRef.current.pause()
         audioRef.current.currentTime = 0
+        // Clear the source completely to prevent caching issues
+        audioRef.current.src = ""
+        audioRef.current.removeAttribute("src")
         // Remove all event listeners to prevent memory leaks
         audioRef.current.onloadstart = null
         audioRef.current.oncanplay = null
@@ -101,6 +113,8 @@ export default function ChatPage() {
         audioRef.current.onerror = null
         audioRef.current.onabort = null
         audioRef.current.onstalled = null
+        // Force reload to clear internal state
+        audioRef.current.load()
         audioRef.current = null
       } catch (error) {
         console.error("Error stopping audio:", error)
@@ -109,41 +123,32 @@ export default function ChatPage() {
     setIsAudioPlaying(false)
     setCurrentAudioId("")
   }
-  // Improved audio play function with better state management
-  const playAudio = async (sessionId: string, messageId: string) => {
-    console.log(`=== AUDIO DEBUG ===`)
-    console.log(`Session ID: ${sessionId}`)
+  // Enhanced audio play function with cache-busting and session
+  const playAudioWithSession = async (sid: string, messageId: string) => {
+    console.log(`🎵 === ENHANCED AUDIO PLAYBACK ===`)
+    console.log(`Session ID: ${sid}`)
     console.log(`Message ID: ${messageId}`)
     console.log(`Audio enabled: ${isAudioEnabled}`)
-    console.log(`Audio endpoint: http://localhost:8000/get-audio/${sessionId}`)
-    
-    // Always stop any currently playing audio first
+
     stopAudio()
-    
-    // Check if audio is enabled
+
     if (!isAudioEnabled) {
-      console.log("❌ Audio is disabled - not starting playback")
+      console.log("❌ Audio is disabled - skipping playback")
       return
     }
-    
-    if (!sessionId) {
+    if (!sid) {
       console.log("❌ No session ID provided")
       return
     }
 
     try {
-      // Create new audio element
       const audio = new Audio()
-      console.log("🎵 Created new Audio element")
-      
-      // Set audio properties - use the new get-audio endpoint
-      audio.src = `http://localhost:8000/get-audio/${sessionId}`
+      const ts = Date.now()
+      const url = `${API_BASE_URL}/get-audio/${sid}?t=${ts}&msg=${messageId}`
+      audio.src = url
       audio.preload = 'auto'
       audio.volume = 1.0
-      
-      console.log("🎵 Audio src set to new endpoint, starting load...")
-      
-      // Set up event handlers with proper cleanup
+
       const cleanup = () => {
         audio.onloadstart = null
         audio.oncanplay = null
@@ -154,49 +159,41 @@ export default function ChatPage() {
         audio.onabort = null
         audio.onstalled = null
       }
-      
+
       audio.onloadstart = () => {
-        console.log("📥 Audio loading started")
-        // Only update state if audio is still enabled
-        if (isAudioEnabled) {
+        if (isAudioEnabled && audioRef.current === audio) {
           setCurrentAudioId(messageId)
           setIsAudioPlaying(true)
         } else {
-          console.log("❌ Audio disabled during load - stopping")
           audio.pause()
           cleanup()
-          return
         }
       }
-      
+
       audio.oncanplaythrough = () => {
-        console.log("✅ Audio ready to play through")
-        // Double-check audio is still enabled before playing
         if (isAudioEnabled && audioRef.current === audio) {
-          audio.play().then(() => {
-            console.log("🎵 Audio playback started successfully")
-          }).catch(error => {
+          audio.play().catch(error => {
             console.error("❌ Audio play failed:", error)
-            setIsAudioPlaying(false)
-            setCurrentAudioId("")
-            cleanup()
+            if (audioRef.current === audio) {
+              setIsAudioPlaying(false)
+              setCurrentAudioId("")
+              cleanup()
+              audioRef.current = null
+            }
           })
         } else {
-          console.log("❌ Audio disabled or replaced during canplaythrough")
           audio.pause()
           cleanup()
         }
       }
 
       audio.onplay = () => {
-        console.log("▶️ Audio is now playing")
         if (audioRef.current === audio) {
           setIsAudioPlaying(true)
         }
       }
 
       audio.onended = () => {
-        console.log("⏹️ Audio playback ended")
         if (audioRef.current === audio) {
           setIsAudioPlaying(false)
           setCurrentAudioId("")
@@ -205,9 +202,7 @@ export default function ChatPage() {
         }
       }
 
-      audio.onerror = (error) => {
-        console.error("❌ Audio error:", error)
-        console.error("❌ Audio error details:", audio.error)
+      audio.onerror = () => {
         if (audioRef.current === audio) {
           setIsAudioPlaying(false)
           setCurrentAudioId("")
@@ -217,7 +212,6 @@ export default function ChatPage() {
       }
 
       audio.onabort = () => {
-        console.log("⚠️ Audio loading aborted")
         if (audioRef.current === audio) {
           setIsAudioPlaying(false)
           setCurrentAudioId("")
@@ -225,13 +219,10 @@ export default function ChatPage() {
         }
       }
 
-      // Store reference and start loading
       audioRef.current = audio
       audio.load()
-      console.log("🎵 Audio load() called")
-
     } catch (error) {
-      console.error("❌ Error in playAudio:", error)
+      console.error("❌ Error in playAudioWithSession:", error)
       setIsAudioPlaying(false)
       setCurrentAudioId("")
     }
@@ -243,7 +234,7 @@ export default function ChatPage() {
     console.log(`Audio URL: ${audioUrl}`)
     console.log(`Message ID: ${messageId}`)
     console.log(`Audio enabled: ${isAudioEnabled}`)
-    console.log(`Full URL: http://localhost:8000${audioUrl}`)
+    console.log(`Full URL: ${API_BASE_URL}${audioUrl}`)
     
     // Always stop any currently playing audio first
     stopAudio()
@@ -265,7 +256,7 @@ export default function ChatPage() {
       console.log("🎵 Created new Audio element")
       
       // Set audio properties - use the provided audio URL
-      audio.src = `http://localhost:8000${audioUrl}`
+      audio.src = `${API_BASE_URL}${audioUrl}`
       audio.preload = 'auto'
       audio.volume = 1.0
       
@@ -401,14 +392,14 @@ export default function ChatPage() {
 
     try {
       // Call the start-assistant API directly
-      const response = await fetch("http://localhost:8000/start-assistant/", {
+      const response = await fetch(`${API_BASE_URL}/start-assistant/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
           transcript: content.trim(),
-          session_id: "1"
+          session_id: sessionId
         })
       })
 
@@ -455,14 +446,8 @@ export default function ChatPage() {
       // Then handle audio - with a small delay to ensure state is updated
       setTimeout(() => {
         if ((data.audio_file || data.audio_url) && isAudioEnabled) {
-          console.log("✅ Conditions met, starting audio playbook")
-          // Use the new audio_url if available, otherwise fall back to session-based endpoint
-          if (data.audio_url) {
-            playAudioFromUrl(data.audio_url, assistantMessageId)
-          } else {
-            // Fallback to session-based endpoint
-            playAudio("1", assistantMessageId) // Pass session_id
-          }
+          console.log("✅ Starting audio playback with session ID")
+          playAudioWithSession(sessionId, assistantMessageId)
         } else {
           console.log("❌ Audio not started")
           console.log(`- Has audio file: ${!!data.audio_file}`)
@@ -529,6 +514,11 @@ export default function ChatPage() {
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0"></div>
                     <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium truncate">AI Assistant Online</span>
+                  </div>
+                  <div className="mt-1">
+                    <span className="inline-block px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] sm:text-xs font-medium tracking-wide">
+                      Trained on Lenden Club data
+                    </span>
                   </div>
                 </div>
               </div>
@@ -639,81 +629,70 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
-          <div className="border-t border-white/20 dark:border-slate-800/50 glass-strong p-3 sm:p-6">
-            <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
-              {/* Enhanced Voice Input Section */}
-              <div className="flex items-center justify-center">
-                <div className="flex flex-col items-center space-y-3 sm:space-y-4">
-                  <div className="relative group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 via-violet-400/20 to-cyan-400/20 rounded-full blur-xl sm:blur-2xl animate-pulse-slow group-hover:blur-lg sm:group-hover:blur-xl transition-all duration-500"></div>
-                      <div className="relative bg-white/20 dark:bg-slate-900/20 backdrop-blur-lg border border-white/30 dark:border-slate-700/30 rounded-full p-3 sm:p-4 shadow-xl">                      <VoiceRecognition
-                        isListening={isListening}
-                        onListeningChange={handleVoiceListeningChange}
-                        onResult={handleVoiceResult}
-                        language={currentLanguage}
-                        size="md"
-                        isAudioPlaying={isAudioPlaying}
-                        onStopAudio={stopAudio}
-                      />
+          {/* Compact Input Area - Claude-like Design for Sales Assistant */}
+          <div className="border-t border-white/20 dark:border-slate-800/50 glass-strong p-3 sm:p-4">
+            <div className="max-w-4xl mx-auto">
+              {/* Compact Input Row */}
+              <div className="flex items-center space-x-3 sm:space-x-4">
+                {/* Voice Button */}
+                <div className="relative flex-shrink-0">
+                  <div className="relative bg-white/20 dark:bg-slate-900/20 backdrop-blur-lg border border-white/30 dark:border-slate-700/30 rounded-full p-2 shadow-lg">
+                    <VoiceRecognition
+                      isListening={isListening}
+                      onListeningChange={handleVoiceListeningChange}
+                      onResult={handleVoiceResult}
+                      language={currentLanguage}
+                      size="sm"
+                      isAudioPlaying={isAudioPlaying}
+                      onStopAudio={stopAudio}
+                    />
+                  </div>
+                </div>
+
+                {/* Text Input */}
+                <div className="flex-1">
+                  <TextInputFallback
+                    onSend={handleSendMessage}
+                    placeholder={isListening ? "🎤 Listening..." : "Ask about pricing, features, or product recommendations..."}
+                    disabled={isTyping}
+                  />
+                </div>
+              </div>
+
+              {/* Compact Status Row */}
+              <div className="flex items-center justify-between mt-2 px-1">
+                <div className="flex items-center space-x-4 text-xs">
+                  {/* Voice Status */}
+                  {isListening && (
+                    <div className="flex items-center space-x-1 text-slate-600 dark:text-slate-300">
+                      <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+                      <span>Listening</span>
                     </div>
-                  </div>
-                  <div className="text-center space-y-1 px-4">
-                    <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">
-                      {isListening ? "🎤 Listening... Click to stop" : "Click to start speaking"}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Speak naturally in {currentLanguage === 'hi' ? 'Hindi or English' : 'English'}
-                    </p>
-                  </div>
+                  )}
+
+                  {/* Audio Status */}
+                  {isAudioPlaying && isAudioEnabled && (
+                    <div className="flex items-center space-x-1 text-blue-600 dark:text-blue-400">
+                      <Volume2 className="h-3 w-3 animate-pulse" />
+                      <span>Playing</span>
+                    </div>
+                  )}
+
+                  {!isAudioEnabled && (
+                    <div className="flex items-center space-x-1 text-slate-500 dark:text-slate-400">
+                      <VolumeX className="h-3 w-3" />
+                      <span>Audio off</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Language & Session Info */}
+                <div className="flex items-center space-x-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span>{currentLanguage === 'hi' ? 'हिंदी/EN' : 'EN'}</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="font-mono">{sessionId.slice(-6)}</span>
                 </div>
               </div>
-
-              {/* Enhanced Text Input Fallback */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-center px-4">
-                  <div className="flex items-center space-x-2 sm:space-x-3 w-full max-w-sm">
-                    <div className="h-px bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-600 to-transparent flex-1"></div>
-                    <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium px-2 whitespace-nowrap">or type your message</span>
-                    <div className="h-px bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-600 to-transparent flex-1"></div>
-                  </div>
-                </div>
-                <TextInputFallback
-                  onSend={handleSendMessage}
-                  placeholder={`Type your message... ${currentLanguage === "hi" ? "(हिंदी में टाइप करें)" : "(Type in English)"}`}
-                  disabled={isTyping}
-                />
-              </div>
-
-              {/* Status Messages */}
-              {isListening && (
-                <div className="text-center text-slate-500 dark:text-slate-400 text-sm animate-pulse px-4">
-                  <p className="flex items-center justify-center space-x-2">
-                    <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                    <span>Listening... Speak clearly</span>
-                  </p>
-                </div>
-              )}
-
-              {/* Audio Status */}
-              {!isAudioEnabled && (
-                <div className="text-center text-slate-500 dark:text-slate-400 text-xs px-4">
-                  <p className="flex items-center justify-center space-x-2">
-                    <VolumeX className="h-3 w-3" />
-                    <span>Audio responses are disabled</span>
-                  </p>
-                </div>
-              )}
-
-              {/* Audio Playing Status */}
-              {isAudioPlaying && isAudioEnabled && (
-                <div className="text-center text-green-600 dark:text-green-400 text-xs px-4">
-                  <p className="flex items-center justify-center space-x-2">
-                    <Volume2 className="h-3 w-3 animate-pulse" />
-                    <span>Playing audio response...</span>
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         </div>
