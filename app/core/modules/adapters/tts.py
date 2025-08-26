@@ -4,7 +4,12 @@ import time
 import threading
 import queue
 import uuid
-import pyaudio
+try:
+    import pyaudio  # Optional: only needed for local playback
+    PYAUDIO_AVAILABLE = True
+except Exception:
+    pyaudio = None
+    PYAUDIO_AVAILABLE = False
 import wave
 import tempfile
 import asyncio
@@ -46,7 +51,8 @@ class RealTimeTTS:
         self.CHUNK = 4096
         self.text_queue = queue.Queue()
         self.is_running = False
-        self.p = pyaudio.PyAudio()
+        # Initialize PyAudio only if available (not required on servers like Render)
+        self.p = pyaudio.PyAudio() if PYAUDIO_AVAILABLE else None
         self.playback_finished_callback = None
         self.is_playing = False
         self.last_audio_file_path = None
@@ -332,6 +338,9 @@ class RealTimeTTS:
     
     def _play_audio_file(self, file_path):
         try:
+            if not PYAUDIO_AVAILABLE:
+                # Playback not supported in server environments without PyAudio
+                return
             wf = wave.open(file_path, 'rb')
             stream = self.p.open(
                 format=self.p.get_format_from_width(wf.getsampwidth()),

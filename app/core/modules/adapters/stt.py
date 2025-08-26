@@ -8,7 +8,12 @@ import math
 import tempfile
 from typing import Callable, Optional, List
 from groq import Groq
-import pyaudio
+try:
+    import pyaudio  # Optional: only needed for live microphone recording
+    PYAUDIO_AVAILABLE = True
+except Exception:
+    pyaudio = None
+    PYAUDIO_AVAILABLE = False
 import wave
 from dotenv import load_dotenv
 from app.helper.get_config import load_env
@@ -82,17 +87,19 @@ class RealTimeTranscriber:
             
         self.client = Groq(api_key=self.api_key)
         self.CHUNK = 1024
-        self.FORMAT = pyaudio.paInt16
+        self.FORMAT = pyaudio.paInt16 if PYAUDIO_AVAILABLE else None
         self.CHANNELS = 1
         self.RATE = 16000
         self.RECORD_SECONDS = 3 
         self.audio_queue = queue.Queue()
         self.is_recording = False
-        self.p = pyaudio.PyAudio()
+        self.p = pyaudio.PyAudio() if PYAUDIO_AVAILABLE else None
         
     def start_recording(self):
         self.is_recording = True
         print("Initializing real-time transcription...")
+        if not PYAUDIO_AVAILABLE:
+            raise RuntimeError("PyAudio is not available in this environment. Live STT cannot start.")
         recording_thread = threading.Thread(target=self._record_audio)
         recording_thread.daemon = True
         recording_thread.start()
@@ -112,10 +119,13 @@ class RealTimeTranscriber:
     def stop_recording(self):
         print("\nStopping transcription...")
         self.is_recording = False
-        self.p.terminate()
+        if self.p:
+            self.p.terminate()
         print("Transcription stopped.")
     
     def _record_audio(self):
+        if not PYAUDIO_AVAILABLE:
+            raise RuntimeError("PyAudio is not available in this environment. Live STT cannot record.")
         stream = self.p.open(
             format=self.FORMAT,
             channels=self.CHANNELS,
