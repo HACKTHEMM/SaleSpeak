@@ -144,7 +144,7 @@ export default function ChatPage() {
     try {
       const audio = new Audio()
       const ts = Date.now()
-      const url = `${API_BASE_URL}/get-audio/${sid}?t=${ts}&msg=${messageId}`
+      const url = `${API_BASE_URL}/api/v1/voice-assistant/get-audio/${sid}?t=${ts}&msg=${messageId}`
       audio.src = url
       audio.preload = 'auto'
       audio.volume = 1.0
@@ -392,7 +392,7 @@ export default function ChatPage() {
 
     try {
       // Call the start-assistant API directly
-      const response = await fetch(`${API_BASE_URL}/start-assistant/`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/voice-assistant/start-assistant`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
