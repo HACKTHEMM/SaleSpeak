@@ -1,0 +1,2 @@
+"{\"@timestamp\": \"2025-11-21T22:08:07.911Z\", \"level\": \"INFO\", \"projectName\": \"Backend Service\", \"message\": \"Voice assistant instance set successfully\", \"thread\": \"MainThread\", \"logger_name\": \"app.routes.api.v1.voice_assistant\", \"process\": \"SpawnProcess-1\"}"
+"{\"@timestamp\": \"2025-11-21T22:08:07.911Z\", \"level\": \"INFO\", \"projectName\": \"Backend Service\", \"message\": \"Supabase Connected.\", \"thread\": \"MainThread\", \"logger_name\": \"app.core.events\", \"process\": \"SpawnProcess-1\"}"
