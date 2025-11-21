@@ -1,5 +1,4 @@
 import os
-import io
 import time
 import threading
 import queue
@@ -9,79 +8,25 @@ import tempfile
 from typing import Callable, Optional, List
 from groq import Groq
 try:
-    import pyaudio  # Optional: only needed for live microphone recording
+    import pyaudio
     PYAUDIO_AVAILABLE = True
 except Exception:
     pyaudio = None
     PYAUDIO_AVAILABLE = False
 import wave
 from dotenv import load_dotenv
-from app.helper.get_config import load_env
+from app.Config import ENV_SETTINGS
+from .vad import VoiceActivityDetector
 
 load_dotenv()
 
-class VoiceActivityDetector:
-    def __init__(self, threshold: float = 0.02, min_duration: float = 1.0, silence_duration: float = 2.0):
-        self.threshold = threshold
-        self.min_duration = min_duration
-        self.silence_duration = silence_duration
-        self.is_voice_active = False
-        self.voice_start_time = 0
-        self.last_voice_time = 0
-        self.voice_buffer = []
-        self.buffer_size = 10
-    
-    def detect_voice_activity(self, audio_data: bytes) -> tuple[bool, bool]:
-        try:
-            audio_values = struct.unpack(f'{len(audio_data)//2}h', audio_data)
-            rms = math.sqrt(sum(x*x for x in audio_values) / len(audio_values))
-            normalized_rms = rms / 32768.0 
-            
-            self.voice_buffer.append(normalized_rms)
-            if len(self.voice_buffer) > self.buffer_size:
-                self.voice_buffer.pop(0)
-            
-            avg_rms = sum(self.voice_buffer) / len(self.voice_buffer)
-            
-            current_time = time.time()
-            has_voice = avg_rms > self.threshold
-            
-            if has_voice and len(self.voice_buffer) >= 3:
-                recent_above_threshold = sum(1 for x in self.voice_buffer[-3:] if x > self.threshold)
-                has_voice = recent_above_threshold >= 2
-            
-            if has_voice:
-                if not self.is_voice_active:
-                    self.is_voice_active = True
-                    self.voice_start_time = current_time
-                self.last_voice_time = current_time
-                return True, False
-            else:
-                if self.is_voice_active:
-                    if (current_time - self.last_voice_time) > self.silence_duration:
-                        if (self.last_voice_time - self.voice_start_time) > self.min_duration:
-                            self.is_voice_active = False
-                            return False, True
-                        else:
-                            self.is_voice_active = False
-                            return False, False
-                    return False, False
-                return False, False
-                    
-        except Exception as e:
-            print(f"Voice activity detection error: {e}")
-            return True, False
-    
-    def reset(self) -> None:
-        self.is_voice_active = False
-        self.voice_start_time = 0
-        self.last_voice_time = 0
-        self.voice_buffer = []
-
+WHISPER_MODEL = "whisper-large-v3-turbo"
+DEFAULT_VOICE_THRESHOLD = 0.02
+DEFAULT_VAD_THRESHOLD = 0.0015
 
 class RealTimeTranscriber:
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.getenv("GROQ_API_KEY") or load_env('GROQ_API_KEY')
+        self.api_key = api_key or ENV_SETTINGS.GROQ_API_KEY
         if not self.api_key:
             raise ValueError("GROQ_API_KEY must be provided or set as environment variable")
             
@@ -164,7 +109,7 @@ class RealTimeTranscriber:
                         with open(temp_file.name, "rb") as file:
                             transcription = self.client.audio.transcriptions.create(
                                 file=(temp_file.name, file.read()),
-                                model="whisper-large-v3-turbo",
+                                model=WHISPER_MODEL,
                                 response_format="json",
                                 temperature=0.7
                             )
@@ -200,7 +145,7 @@ class RealTimeTranscriber:
                     rms = math.sqrt(sum(x*x for x in audio_values) / len(audio_values))
                     normalized_rms = rms / 32768.0
                     
-                    if normalized_rms > 0.02:
+                    if normalized_rms > DEFAULT_VOICE_THRESHOLD:
                         voice_chunks += 1
                     total_chunks += 1
                 except:
@@ -226,7 +171,7 @@ class EnhancedRealTimeTranscriber(RealTimeTranscriber):
         self.voice_detector = VoiceActivityDetector()
         self.accumulated_audio = []
         self.is_accumulating = False
-        self.is_paused = False  # Add pause state
+        self.is_paused = False
         
         if callback:
             self.add_transcription_callback(callback)
@@ -237,16 +182,15 @@ class EnhancedRealTimeTranscriber(RealTimeTranscriber):
     def remove_transcription_callback(self, callback: Callable[[str], None]) -> None:
         if callback in self.transcription_callbacks:
             self.transcription_callbacks.remove(callback)
+    
     def clear_transcription_callbacks(self) -> None:
         self.transcription_callbacks.clear()
     
     def pause_transcription(self) -> None:
-        """Pause transcription processing"""
         self.is_paused = True
         print("[STT] Transcription paused")
     
     def resume_transcription(self) -> None:
-        """Resume transcription processing"""
         self.is_paused = False
         print("[STT] Transcription resumed")
     
@@ -274,7 +218,6 @@ class EnhancedRealTimeTranscriber(RealTimeTranscriber):
                     self.accumulated_audio.append(data)
                 elif self.is_accumulating:
                     self.accumulated_audio.append(data)
-
                     
                     if should_process and self.accumulated_audio:
                         print("[Voice ended - processing...]")
@@ -292,6 +235,7 @@ class EnhancedRealTimeTranscriber(RealTimeTranscriber):
                 if frames:
                     audio_data = b''.join(frames)
                     self.audio_queue.put(audio_data)
+        
         print(f'stopping the stream of voice.')
         stream.stop_stream()
         stream.close()
@@ -300,9 +244,7 @@ class EnhancedRealTimeTranscriber(RealTimeTranscriber):
         print(f'\nBegin processing the audio from enhanced realtime.')
         while self.is_recording:
             try:
-                # Skip processing if paused
                 if self.is_paused:
-                    # Clear the queue during pause to prevent backlog
                     try:
                         self.audio_queue.get_nowait()
                         self.audio_queue.task_done()
@@ -333,7 +275,7 @@ class EnhancedRealTimeTranscriber(RealTimeTranscriber):
                         with open(temp_file.name, "rb") as file:
                             transcription = self.client.audio.transcriptions.create(
                                 file=(temp_file.name, file.read()),
-                                model="whisper-large-v3-turbo",
+                                model=WHISPER_MODEL,
                                 response_format="json",
                                 temperature=0.7
                             )
@@ -370,20 +312,8 @@ class EnhancedRealTimeTranscriber(RealTimeTranscriber):
     def get_silence_duration(self) -> float:
         return time.time() - self.last_transcription_time
     
-    def enable_voice_activity_detection(self, threshold: float = 0.0015, min_duration: float = 1.0, silence_duration: float = 1.5) -> None:
+    def enable_voice_activity_detection(self, threshold: float = DEFAULT_VAD_THRESHOLD, min_duration: float = 1.0, silence_duration: float = 1.5) -> None:
         self.voice_detector = VoiceActivityDetector(threshold, min_duration, silence_duration)
     
     def disable_voice_activity_detection(self) -> None:
         self.voice_detector = None
-
-
-if __name__ == "__main__":
-    def print_callback(transcription: str):
-        print(f"[Callback] Transcribed: {transcription}")
-
-    try:
-        transcriber = EnhancedRealTimeTranscriber()
-        transcriber.enable_voice_activity_detection(threshold=0.0015, min_duration=1.0, silence_duration=1.5)
-        transcriber.start_recording_with_callback(print_callback)
-    except Exception as e:
-        print(f"Error starting transcription: {e}")
