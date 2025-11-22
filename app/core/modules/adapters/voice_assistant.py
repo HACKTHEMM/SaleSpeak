@@ -1,6 +1,7 @@
 import threading
 import time
 import logging
+import asyncio
 import concurrent.futures
 from typing import Dict, Any, Optional
 
@@ -35,13 +36,13 @@ class VoiceAssistant:
     def _on_tts_completion(self, task_id: str, audio_path: str):
         pass
         
-    def _process_transcription_task(self, request_id: str, transcription: str, include_audio: bool) -> dict:
+    async def _process_transcription_task(self, request_id: str, transcription: str, include_audio: bool) -> dict:
         try:
 
             
             start_time = time.time()
             
-            response = self.language_processor.process_query(
+            response = await self.language_processor.process_query(
                 user_input=transcription,
                 context=self.conversation_context.copy()
             )
@@ -62,7 +63,7 @@ class VoiceAssistant:
                 try:
                     audio_start_time = time.time()
                     tts_text = html_to_plain_text(response_text)
-                    audio_file_path = self.tts_adapter.speak_text(tts_text, priority=1, timeout=20.0)
+                    audio_file_path = await self.tts_adapter.speak_text(tts_text, priority=1, timeout=20.0)
                     
                     result["audio_file"] = audio_file_path or ""
                     
@@ -83,7 +84,7 @@ class VoiceAssistant:
             
             if include_audio:
                 try:
-                    audio_file_path = self.tts_adapter.speak_text(error_response, priority=2)
+                    audio_file_path = await self.tts_adapter.speak_text(error_response, priority=2)
                     result["audio_file"] = audio_file_path or ""
                 except Exception as tts_error:
                     logger.error(f"Request {request_id}: TTS Error in error handling: {tts_error}")
@@ -96,28 +97,29 @@ class VoiceAssistant:
                 if request_id in self.active_requests:
                     del self.active_requests[request_id]
     
-    def handle_transcription_with_audio_async(self, transcription: str) -> str:
-        return self._handle_transcription_async(transcription, include_audio=True)
+    async def handle_transcription_with_audio_async(self, transcription: str) -> str:
+        return await self._handle_transcription_async(transcription, include_audio=True)
     
-    def handle_transcription_only_async(self, transcription: str) -> str:
-        return self._handle_transcription_async(transcription, include_audio=False)
+    async def handle_transcription_only_async(self, transcription: str) -> str:
+        return await self._handle_transcription_async(transcription, include_audio=False)
     
-    def _handle_transcription_async(self, transcription: str, include_audio: bool) -> str:
+    async def _handle_transcription_async(self, transcription: str, include_audio: bool) -> str:
         if self.shutdown_event.is_set():
             raise Exception("VoiceAssistant is shutting down")
         
         request_id = f"req_{self.request_counter.increment()}"
         
-        future = self.executor.submit(
-            self._process_transcription_task,
-            request_id,
-            transcription,
-            include_audio
+        task = asyncio.create_task(
+            self._process_transcription_task(
+                request_id,
+                transcription,
+                include_audio
+            )
         )
         
         with self.request_lock:
             self.active_requests[request_id] = {
-                'future': future,
+                'task': task,
                 'transcription': transcription,
                 'include_audio': include_audio,
                 'start_time': time.time()
@@ -126,31 +128,31 @@ class VoiceAssistant:
 
         return request_id
     
-    def get_request_result(self, request_id: str, timeout: float = 30.0) -> Optional[dict]:
+    async def get_request_result(self, request_id: str, timeout: float = 30.0) -> Optional[dict]:
         with self.request_lock:
             if request_id not in self.active_requests:
                 logger.warning(f"Request {request_id} not found")
                 return None
             
-            future = self.active_requests[request_id]['future']
+            task = self.active_requests[request_id]['task']
         
         try:
-            result = future.result(timeout=timeout)
+            result = await asyncio.wait_for(task, timeout=timeout)
             return result
-        except concurrent.futures.TimeoutError:
+        except asyncio.TimeoutError:
             logger.error(f"Request {request_id} timed out after {timeout}s")
             return {"text": "Request timed out", "error": "timeout"}
         except Exception as e:
             logger.error(f"Request {request_id} failed: {str(e)}")
             return {"text": "Request failed", "error": str(e)}
     
-    def handle_transcription_with_audio(self, transcription: str) -> dict:
-        request_id = self.handle_transcription_with_audio_async(transcription)
-        return self.get_request_result(request_id) or {"text": "Processing failed", "audio_file": ""}
+    async def handle_transcription_with_audio(self, transcription: str) -> dict:
+        request_id = await self.handle_transcription_with_audio_async(transcription)
+        return await self.get_request_result(request_id) or {"text": "Processing failed", "audio_file": ""}
     
-    def handle_transcription_only(self, transcription: str) -> dict:
-        request_id = self.handle_transcription_only_async(transcription)
-        return self.get_request_result(request_id) or {"text": "Processing failed"}
+    async def handle_transcription_only(self, transcription: str) -> dict:
+        request_id = await self.handle_transcription_only_async(transcription)
+        return await self.get_request_result(request_id) or {"text": "Processing failed"}
     
     def get_active_request_count(self) -> int:
         with self.request_lock:
@@ -161,10 +163,10 @@ class VoiceAssistant:
             if request_id not in self.active_requests:
                 return None
             
-            future = self.active_requests[request_id]['future']
+            task = self.active_requests[request_id]['task']
             
-            if future.done():
-                if future.exception():
+            if task.done():
+                if task.exception():
                     return "failed"
                 else:
                     return "completed"
@@ -176,8 +178,8 @@ class VoiceAssistant:
             if request_id not in self.active_requests:
                 return False
             
-            future = self.active_requests[request_id]['future']
-            success = future.cancel()
+            task = self.active_requests[request_id]['task']
+            success = task.cancel()
             
             if success:
                 del self.active_requests[request_id]

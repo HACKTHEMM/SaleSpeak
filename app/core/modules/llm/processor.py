@@ -2,13 +2,14 @@ import os
 import uuid
 import time
 import json
+import asyncio
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock, RLock
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
-from groq import Groq
+from groq import AsyncGroq
 from dotenv import load_dotenv
 from app.Config import ENV_SETTINGS
 
@@ -30,11 +31,11 @@ class QueryClassifier:
     def __init__(self, api_key: Optional[str] = None, model_name: str = "mixtral-8x7b-32768"):
         self.api_key = api_key or ENV_SETTINGS.GROQ_API_KEY
         self.model_name = model_name
-        self.client = Groq(api_key=self.api_key)
+        self.client = AsyncGroq(api_key=self.api_key)
         
-    def classify(self, query: str) -> Dict[str, Any]:
+    async def classify(self, query: str) -> Dict[str, Any]:
         try:
-            completion = self.client.chat.completions.create(
+            completion = await self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[
                     {"role": "system", "content": CLASSIFICATION_PROMPT},
@@ -75,17 +76,12 @@ class LanguageProcessor:
         if not self.api_key:
             raise ValueError("GROQ_API_KEY is required")
         
-        self.use_web_scraper = use_web_scraper
+        self.use_web_scraper = True
         self.web_scraper = None
         self.query_processor = None
         
-        if self.use_web_scraper:
-            try:
-                self.web_scraper = WebSearcher(serpapi_key)
-                self.query_processor = BasicQueryProcessor()
-            except Exception as e:
-                self.use_web_scraper = False
-        
+        self.web_scraper = WebSearcher(serpapi_key)
+        self.query_processor = BasicQueryProcessor()
         self.model_name = model_name or getattr(ENV_SETTINGS, 'MODEL_ID', 'mixtral-8x7b-32768')
         self.conversation_id = str(uuid.uuid4())
         self.response_language = response_language
@@ -115,7 +111,7 @@ class LanguageProcessor:
             ("human", "{input}")
         ])
     
-    def process_query(self, user_input: str, context: Optional[Dict[str, Any]] = None,
+    async def process_query(self, user_input: str, context: Optional[Dict[str, Any]] = None,
                      force_language: Optional[str] = None,
                      use_web_context: bool = True, max_web_results: int = 3) -> str:
         try:
@@ -124,7 +120,7 @@ class LanguageProcessor:
             else:
                 current_language = force_language or self.response_language
 
-            web_context = self._get_web_context(user_input, use_web_context, max_web_results)
+            web_context = await self._get_web_context(user_input, use_web_context, max_web_results)
             
             formatted_input = self._format_input(user_input, context, current_language, web_context)
             
@@ -138,21 +134,30 @@ class LanguageProcessor:
             else:
                 chain = self.conversation_template | self.llm
             
-            response = chain.invoke({"input": formatted_input})
+            response = await chain.ainvoke({"input": formatted_input})
             response_content = response.content.strip()
             
-            response_content = self._enforce_language(response_content, current_language, user_input, web_context)
+            response_content = await self._enforce_language(response_content, current_language, user_input, web_context)
             
             return response_content
             
         except Exception as e:
             return self._handle_error(e, current_language)
 
-    def _get_web_context(self, user_input: str, use_web_context: bool, max_results: int) -> str:
-        if not (self.use_web_scraper and use_web_context and self.web_scraper):
+    async def _get_web_context(self, user_input: str, use_web_context: bool, max_results: int) -> str:
+        if not use_web_context:
             return ""
+        
+        if not self.use_web_scraper:
+            return ""
+        
+        if not self.web_scraper:
+            return "\n\n[Web context unavailable - scraper not initialized]\n"
+        
         try:
-            web_data = get_web_data_for_llm(user_input)
+            loop = asyncio.get_event_loop()
+            web_data = await loop.run_in_executor(None, lambda: get_web_data_for_llm(user_input))
+            
             if "error" not in web_data:
                 context = "\n\n=== REAL-TIME WEB CONTEXT ===\n"
                 context += f"[Retrieved current information for: {user_input}]\n\n"
@@ -186,10 +191,11 @@ class LanguageProcessor:
                 context += "[Use this current information to answer the user's question directly and confidently]\n"
                 return context
             else:
-                print(f"Web scraping error: {web_data.get('error')}")
+                error_msg = web_data.get('error', 'Unknown error')
                 return "\n\n[Web context unavailable - API error occurred]\n"
         except Exception as e:
-            print(f"Web scraping exception: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return "\n\n[Web context unavailable - exception occurred]\n"
 
     def _format_input(self, user_input: str, context: Optional[Dict[str, Any]], current_language: str,
@@ -205,17 +211,17 @@ class LanguageProcessor:
         
         return formatted_input
 
-    def _enforce_language(self, response_content: str, current_language: str, user_input: str, context: str) -> str:
+    async def _enforce_language(self, response_content: str, current_language: str, user_input: str, context: str) -> str:
         if current_language == "hindi" and not self.allow_mixed_language and not contains_hindi(response_content):
             hindi_prompt = get_correction_prompt("hindi", user_input, context)
-            response = self.llm.invoke([
+            response = await self.llm.ainvoke([
                 SystemMessage(content="You must respond in pure Hindi (हिंदी) using Devanagari script. Never use English."),
                 HumanMessage(content=hindi_prompt)
             ])
             return response.content.strip()
         elif current_language == "hinglish" and not is_hinglish_response(response_content):
             hinglish_prompt = get_correction_prompt("hinglish", user_input, context)
-            response = self.llm.invoke([
+            response = await self.llm.ainvoke([
                 SystemMessage(content="Respond in Hinglish (Hindi-English mix) as natural for Indian users. Mix languages naturally."),
                 HumanMessage(content=hinglish_prompt)
             ])
@@ -240,14 +246,14 @@ class LanguageProcessor:
             ("human", "{input}")
         ])
     
-    def process_hinglish_query(self, user_input: str, **kwargs) -> str:
-        return self.process_query(user_input, force_language="hinglish", **kwargs)
+    async def process_hinglish_query(self, user_input: str, **kwargs) -> str:
+        return await self.process_query(user_input, force_language="hinglish", **kwargs)
     
-    def process_hindi_query(self, user_input: str, **kwargs) -> str:
-        return self.process_query(user_input, force_language="hindi", **kwargs)
+    async def process_hindi_query(self, user_input: str, **kwargs) -> str:
+        return await self.process_query(user_input, force_language="hindi", **kwargs)
     
-    def process_english_query(self, user_input: str, **kwargs) -> str:
-        return self.process_query(user_input, force_language="english", **kwargs)
+    async def process_english_query(self, user_input: str, **kwargs) -> str:
+        return await self.process_query(user_input, force_language="english", **kwargs)
     
     def set_conversation_id(self, conversation_id: str) -> None:
         self.conversation_id = conversation_id
@@ -259,14 +265,14 @@ class LanguageProcessor:
             ("human", "{input}")
         ])
     
-    def process_with_custom_prompt(self, user_input: str, custom_system_prompt: str) -> str:
+    async def process_with_custom_prompt(self, user_input: str, custom_system_prompt: str) -> str:
         try:
             custom_template = ChatPromptTemplate.from_messages([
                 ("system", custom_system_prompt),
                 ("human", "{input}")
             ])
             chain = custom_template | self.llm
-            response = chain.invoke({"input": user_input})
+            response = await chain.ainvoke({"input": user_input})
             return response.content.strip()
         except Exception as e:
             error_msg = f"Error processing query with custom prompt: {str(e)}"
@@ -285,20 +291,22 @@ class LanguageProcessor:
     def set_web_scraper_enabled(self, enabled: bool) -> None:
         self.use_web_scraper = enabled
     
-    def process_query_with_web_priority(self, user_input: str, **kwargs) -> str:
+    async def process_query_with_web_priority(self, user_input: str, **kwargs) -> str:
         kwargs['use_web_context'] = True
         kwargs['max_web_results'] = kwargs.get('max_web_results', 5)
-        return self.process_query(user_input, **kwargs)
+        return await self.process_query(user_input, **kwargs)
     
-    def process_query_without_web(self, user_input: str, **kwargs) -> str:
-        kwargs['use_web_context'] = False
-        return self.process_query(user_input, **kwargs)
+    async def process_query_without_web(self, user_input: str, **kwargs) -> str:        # Even without web, still call scraper but with reduced results
+        kwargs['use_web_context'] = True
+        kwargs['max_web_results'] = 1
+        return await self.process_query(user_input, **kwargs)
     
-    def get_web_context_for_query(self, user_input: str, max_results: int = 3) -> Dict[str, Any]:
+    async def get_web_context_for_query(self, user_input: str, max_results: int = 3) -> Dict[str, Any]:
         if not self.use_web_scraper or not self.web_scraper:
             return {"success": False, "error": "Web scraper not available"}
         try:
-            web_data = get_web_data_for_llm(user_input)
+            loop = asyncio.get_event_loop()
+            web_data = await loop.run_in_executor(None, lambda: get_web_data_for_llm(user_input))
             return {
                 "success": "error" not in web_data,
                 "context": web_data,

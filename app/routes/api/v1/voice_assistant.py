@@ -31,7 +31,7 @@ async def start_assistant(data: TranscriptReq):
 
     try:
         assistant_start_time = time.time()
-        result = assistant.handle_transcription_with_audio(data.transcript)
+        result = await assistant.handle_transcription_with_audio(data.transcript)
         assistant_end_time = time.time()
         assistant_processing_time = assistant_end_time - assistant_start_time
         

@@ -2,6 +2,7 @@ import threading
 import time
 import queue
 import logging
+import asyncio
 from typing import Optional, Callable
 
 from .audio_utils import TaskStatus, AudioTask, ThreadSafeCounter, AudioProcessor
@@ -157,11 +158,11 @@ class TTSAdapter(AudioProcessor):
             logger.error("TTS queue is full, cannot add new task")
             raise Exception("TTS queue is full")
     
-    def speak_text(self, text: str, priority: int = 0, timeout: float = DEFAULT_WAIT_TIMEOUT) -> Optional[str]:
+    async def speak_text(self, text: str, priority: int = 0, timeout: float = DEFAULT_WAIT_TIMEOUT) -> Optional[str]:
         task_id = self.speak_text_async(text, priority)
-        return self.wait_for_task(task_id, timeout)
+        return await self.wait_for_task(task_id, timeout)
     
-    def wait_for_task(self, task_id: str, timeout: float = DEFAULT_WAIT_TIMEOUT) -> Optional[str]:
+    async def wait_for_task(self, task_id: str, timeout: float = DEFAULT_WAIT_TIMEOUT) -> Optional[str]:
         start_time = time.time()
         
         while time.time() - start_time < timeout:
@@ -173,9 +174,8 @@ class TTSAdapter(AudioProcessor):
                     elif task.status == TaskStatus.FAILED:
                         logger.error(f"Task {task_id} failed: {task.error}")
                         return None
-                
-                with self.condition:
-                    self.condition.wait(timeout=0.5)
+            
+            await asyncio.sleep(0.5)
         
         logger.warning(f"Timeout waiting for task {task_id}")
         return None
@@ -229,8 +229,8 @@ class TTSAdapter(AudioProcessor):
         
         self.is_initialized = True
     
-    def process(self, text: str) -> Optional[str]:
-        return self.speak_text(text)
+    async def process(self, text: str) -> Optional[str]:
+        return await self.speak_text(text)
     
     def start(self) -> None:
         self._initialize_tts()
