@@ -25,9 +25,9 @@ class Settings(BaseSettings):
     DEBUG: Optional[bool] = False
     LOG_DIR: Optional[str] = "logs"
     MODEL_ID: Optional[str] = None
-    COMPANY_NAME: str = "LenDen Club"
-    LLM_TEMPERATURE: float = 0.7
-    LLM_MAX_TOKENS: int = 4096
+    COMPANY_NAME: str 
+    LLM_TEMPERATURE: Optional[float]
+    LLM_MAX_TOKENS: Optional[int]
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

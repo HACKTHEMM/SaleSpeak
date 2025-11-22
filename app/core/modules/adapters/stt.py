@@ -111,7 +111,7 @@ class RealTimeTranscriber:
                                 file=(temp_file.name, file.read()),
                                 model=WHISPER_MODEL,
                                 response_format="json",
-                                temperature=0.7
+                                temperature=ENV_SETTINGS.LLM_TEMPERATURE
                             )
                         
                         if transcription.text.strip():
@@ -277,7 +277,7 @@ class EnhancedRealTimeTranscriber(RealTimeTranscriber):
                                 file=(temp_file.name, file.read()),
                                 model=WHISPER_MODEL,
                                 response_format="json",
-                                temperature=0.7
+                                temperature=ENV_SETTINGS.LLM_TEMPERATURE
                             )
                         
                         if transcription.text.strip() and not self.is_paused:

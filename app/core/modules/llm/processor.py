@@ -94,8 +94,8 @@ class LanguageProcessor:
         self.llm = ChatGroq(
             groq_api_key=self.api_key,
             model_name=self.model_name,
-            temperature=0.7,
-            max_tokens=4096
+            temperature=ENV_SETTINGS.LLM_TEMPERATURE,
+            max_tokens=ENV_SETTINGS.LLM_MAX_TOKENS
         )
         
         self.system_prompt = get_system_prompt(self.response_language, self.allow_mixed_language)
@@ -157,7 +157,6 @@ class LanguageProcessor:
                 context = "\n\n=== REAL-TIME WEB CONTEXT ===\n"
                 context += f"[Retrieved current information for: {user_input}]\n\n"
                 
-                # Add quick facts first (answer boxes, knowledge graphs)
                 if web_data.get("quick_facts"):
                     context += "KEY INFORMATION:\n"
                     for fact in web_data["quick_facts"]:
@@ -167,14 +166,12 @@ class LanguageProcessor:
                                     context += f"  {key}: {value}\n"
                     context += "\n"
                 
-                # Add summary
                 if web_data.get("summary"):
                     context += "SUMMARY FROM WEB SOURCES:\n"
                     for item in web_data["summary"][:max_results]:
                         context += f"• {item}\n"
                     context += "\n"
                 
-                # Add detailed results
                 if web_data.get("detailed_results"):
                     context += "DETAILED INFORMATION:\n"
                     for i, item in enumerate(web_data["detailed_results"][:max_results], 1):
