@@ -7,13 +7,14 @@ LANGUAGE_DICT = {
         "Nicole": "piTKgcLEGmPE4e6mEKli",   
     },
     "Hindi": {
-        "Monika": "1qEiC6qsybMkmnNdVMbK",   
+        "Monika": "1qEiC6qsybMkmnNdVMbK",
+        "Monika2": "kvQSb3naDTi3sgHwwBC1"
     },
 }
 
 DEFAULT_SPEAKERS = {
     "English": "Rachel",
-    "Hindi": "Monika"
+    "Hindi": "Monika2"
 }
 
 HINDI_DETECTION_THRESHOLD = 0.25
