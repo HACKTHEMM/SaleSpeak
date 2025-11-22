@@ -11,7 +11,8 @@ except Exception:
     PYAUDIO_AVAILABLE = False
 import wave
 import asyncio
-import edge_tts
+import requests
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from dotenv import load_dotenv
@@ -103,7 +104,7 @@ class RealTimeTTS:
                 print(f"Error in convert_text_with_language: {e}")
                 return None
     
-    async def _text_to_speech_edge(self, text):
+    async def _text_to_speech_elevenlabs(self, text):
         if self.auto_detect_language:
             detected_language = self.detect_language(text)
             current_speaker = DEFAULT_SPEAKERS[detected_language]
@@ -113,16 +114,46 @@ class RealTimeTTS:
             current_speaker = self.speaker
             print(f"Using configured language: {detected_language}, speaker: {current_speaker}")
         
-        voice = LANGUAGE_DICT[detected_language][current_speaker]
+        voice_id = LANGUAGE_DICT[detected_language][current_speaker]
         
-        communicate = edge_tts.Communicate(text, voice)
+        if not ENV_SETTINGS.ELEVENLABS_API_KEY:
+            raise ValueError("ELEVENLABS_API_KEY not found in environment settings")
+
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        
+        headers = {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": ENV_SETTINGS.ELEVENLABS_API_KEY
+        }
+        
+        data = {
+            "text": text,
+            "model_id": ENV_SETTINGS.ELEVENLABS_MODEL_ID,
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.5
+            }
+        }
+        
+        loop = asyncio.get_event_loop()
+        
+        def make_request():
+            response = requests.post(url, json=data, headers=headers)
+            if response.status_code != 200:
+                raise Exception(f"ElevenLabs API error: {response.text}")
+            return response.content
+
+        audio_content = await loop.run_in_executor(None, make_request)
         
         audio_dir = Path("static/audio")
         audio_dir.mkdir(parents=True, exist_ok=True)
-        unique_filename = f"{uuid.uuid4().hex}.wav"
+        unique_filename = f"{uuid.uuid4().hex}.mp3"
         audio_file_path = audio_dir / unique_filename
         
-        await communicate.save(str(audio_file_path))
+        with open(audio_file_path, "wb") as f:
+            f.write(audio_content)
+            
         return str(audio_file_path)
 
     def stop_tts(self):
@@ -222,7 +253,7 @@ class RealTimeTTS:
             
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            audio_file_path = loop.run_until_complete(self._text_to_speech_edge(text))
+            audio_file_path = loop.run_until_complete(self._text_to_speech_elevenlabs(text))
             loop.close()
             
             print(f'Generated audio file: {audio_file_path}')
@@ -412,15 +443,40 @@ class RealTimeTTS:
                 current_speaker = self.speaker
                 print(f"Task {task_id}: Using configured language: {detected_language}, speaker: {current_speaker}")
             
-            voice = LANGUAGE_DICT[detected_language][current_speaker]
+            voice_id = LANGUAGE_DICT[detected_language][current_speaker]
             
             async def generate_audio():
-                communicate = edge_tts.Communicate(text, voice)
+                if not ENV_SETTINGS.ELEVENLABS_API_KEY:
+                    raise ValueError("ELEVENLABS_API_KEY not found")
+
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+                headers = {
+                    "Accept": "audio/mpeg",
+                    "Content-Type": "application/json",
+                    "xi-api-key": ENV_SETTINGS.ELEVENLABS_API_KEY
+                }
+                data = {
+                    "text": text,
+                    "model_id": ENV_SETTINGS.ELEVENLABS_MODEL_ID,
+                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.5}
+                }
+                
+                loop = asyncio.get_event_loop()
+                def make_request():
+                    response = requests.post(url, json=data, headers=headers)
+                    if response.status_code != 200:
+                        raise Exception(f"ElevenLabs API error: {response.text}")
+                    return response.content
+
+                audio_content = await loop.run_in_executor(None, make_request)
+                
                 audio_dir = Path("static/audio")
                 audio_dir.mkdir(parents=True, exist_ok=True)
-                unique_filename = f"{task_id}_{uuid.uuid4().hex}.wav"
+                unique_filename = f"{task_id}_{uuid.uuid4().hex}.mp3"
                 audio_file_path = audio_dir / unique_filename
-                await communicate.save(str(audio_file_path))
+                
+                with open(audio_file_path, "wb") as f:
+                    f.write(audio_content)
                 return str(audio_file_path)
             
             loop = asyncio.new_event_loop()

@@ -2,19 +2,18 @@ import re
 
 LANGUAGE_DICT = {
     "English": {
-        "Neerja": "en-IN-NeerjaNeural",
-        "Prabhat": "en-IN-PrabhatNeural",
-        "Jenny": "en-US-JennyNeural",
+        "Rachel": "21m00Tcm4TlvDq8ikWAM", 
+        "Adam": "pNInz6obpgDQGcFmaJgB", 
+        "Nicole": "piTKgcLEGmPE4e6mEKli",   
     },
     "Hindi": {
-        "Madhur": "hi-IN-MadhurNeural",
-        "Swara": "hi-IN-SwaraNeural",
+        "Monika": "1qEiC6qsybMkmnNdVMbK",   
     },
 }
 
 DEFAULT_SPEAKERS = {
-    "English": "Neerja",
-    "Hindi": "Swara"
+    "English": "Rachel",
+    "Hindi": "Monika"
 }
 
 HINDI_DETECTION_THRESHOLD = 0.25

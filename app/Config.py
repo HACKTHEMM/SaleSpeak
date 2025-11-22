@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     COMPANY_NAME: str 
     LLM_TEMPERATURE: Optional[float]
     LLM_MAX_TOKENS: Optional[int]
+    ELEVENLABS_API_KEY: str
+    ELEVENLABS_MODEL_ID: str
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
