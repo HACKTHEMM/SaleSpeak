@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: Optional[int]
     ELEVENLABS_API_KEY: str
     ELEVENLABS_MODEL_ID: str
+    EXA_API_KEY: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

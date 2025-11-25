@@ -14,8 +14,8 @@ from dotenv import load_dotenv
 from app.Config import ENV_SETTINGS
 
 from app.core.modules.web_scraper.web_scraper import (
-    WebSearcher, 
-    BasicQueryProcessor,
+    ExaSearcher, 
+    LLMQueryProcessor,
     get_web_data_for_llm
 )
 
@@ -59,7 +59,7 @@ class QueryClassifier:
 class LanguageProcessor:    
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None,
                  response_language: str = "auto", allow_mixed_language: bool = True,
-                 use_web_scraper: bool = True, serpapi_key: Optional[str] = None,
+                 use_web_scraper: bool = True, exa_api_key: Optional[str] = None,
                  max_workers: int = 4, enable_parallel_processing: bool = True):
         self.max_workers = max_workers
         self.enable_parallel_processing = enable_parallel_processing
@@ -80,8 +80,8 @@ class LanguageProcessor:
         self.web_scraper = None
         self.query_processor = None
         
-        self.web_scraper = WebSearcher(serpapi_key)
-        self.query_processor = BasicQueryProcessor()
+        self.web_scraper = ExaSearcher(exa_api_key)
+        self.query_processor = LLMQueryProcessor()
         self.model_name = model_name or getattr(ENV_SETTINGS, 'MODEL_ID', 'mixtral-8x7b-32768')
         self.conversation_id = str(uuid.uuid4())
         self.response_language = response_language
@@ -150,6 +150,8 @@ class LanguageProcessor:
         
         if not self.use_web_scraper:
             return ""
+        
+        print(f"Triggering EXA search for query: {user_input}")
         
         if not self.web_scraper:
             return "\n\n[Web context unavailable - scraper not initialized]\n"

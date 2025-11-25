@@ -1,95 +1,65 @@
 import os
-import time
+import requests
 from typing import List, Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from serpapi import GoogleSearch
-from dotenv import load_dotenv
 from app.Config import ENV_SETTINGS
-from .config import DEFAULT_NUM_RESULTS, DEFAULT_LOCATION
+from .config import DEFAULT_NUM_RESULTS
 
-load_dotenv()
+class ExaSearcher:
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or ENV_SETTINGS.EXA_API_KEY or os.getenv("EXA_API_KEY")
+        self.base_url = "https://api.exa.ai/search"
 
-class WebSearcher:
-
-    def __init__(self, serpapi_key: Optional[str] = None, max_workers: int = 5):
-        self.api_key = serpapi_key or ENV_SETTINGS.SERP_API_KEY or os.getenv("SERP_API_KEY")
-        self.max_workers = max_workers
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        
-    def search(self, query: str, num_results: int = DEFAULT_NUM_RESULTS, location: str = DEFAULT_LOCATION) -> Dict[str, Any]:
+    def search(self, query: str, num_results: int = DEFAULT_NUM_RESULTS, use_autoprompt: bool = True) -> Dict[str, Any]:
         if not query:
             return {"error": "Empty query"}
             
         if not self.api_key:
-            return {"error": "Missing SERP API Key"}
+            return {"error": "Missing EXA API Key"}
             
-        try:
-            params = {
-                "q": query,
-                "location": location,
-                "hl": "en",
-                "gl": "in" if location == "India" else "us",
-                "google_domain": "google.co.in" if location == "India" else "google.com",
-                "num": num_results,
-                "api_key": self.api_key
+        headers = {
+            "x-api-key": self.api_key,
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "query": query,
+            "numResults": num_results,
+            "useAutoprompt": use_autoprompt,
+            "contents": {
+                "text": True,
+                "highlights": True
             }
-            
-            search = GoogleSearch(params)
-            results = search.get_dict()
+        }
+        
+        try:
+            response = requests.post(self.base_url, json=payload, headers=headers)
+            response.raise_for_status()
+            results = response.json()
             
             return self._process_results(results, query)
             
         except Exception as e:
-            print(f"Search error: {e}")
+            print(f"Exa Search error: {e}")
             return {"error": str(e)}
     
     def _process_results(self, results: Dict[str, Any], query: str) -> Dict[str, Any]:
         processed = {
             "query": query,
-            "organic_results": [],
-            "answer_box": None,
-            "knowledge_graph": None,
-            "related_questions": []
+            "results": [],
+            "autoprompt_string": results.get("autopromptString")
         }
         
-        if "organic_results" in results:
-            for item in results["organic_results"]:
-                processed["organic_results"].append({
+        if "results" in results:
+            for item in results["results"]:
+                processed["results"].append({
                     "title": item.get("title"),
-                    "link": item.get("link"),
-                    "snippet": item.get("snippet"),
-                    "position": item.get("position")
-                })
-                
-        if "answer_box" in results:
-            processed["answer_box"] = results["answer_box"]
-            
-        if "knowledge_graph" in results:
-            processed["knowledge_graph"] = results["knowledge_graph"]
-            
-        if "related_questions" in results:
-            for item in results["related_questions"]:
-                processed["related_questions"].append({
-                    "question": item.get("question"),
-                    "snippet": item.get("snippet"),
-                    "link": item.get("link")
+                    "url": item.get("url"),
+                    "id": item.get("id"),
+                    "score": item.get("score"),
+                    "published_date": item.get("publishedDate"),
+                    "author": item.get("author"),
+                    "text": item.get("text"),
+                    "highlights": item.get("highlights")
                 })
                 
         return processed
-        
-    def multi_search(self, queries: List[str], num_results: int = DEFAULT_NUM_RESULTS) -> Dict[str, Any]:
-        results = {}
-        futures = {}
-        
-        for query in queries:
-            future = self.executor.submit(self.search, query, num_results)
-            futures[future] = query
-            
-        for future in as_completed(futures):
-            query = futures[future]
-            try:
-                results[query] = future.result()
-            except Exception as e:
-                results[query] = {"error": str(e)}
-                
-        return results

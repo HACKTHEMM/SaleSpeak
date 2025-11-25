@@ -44,7 +44,9 @@ class VoiceAssistant:
             
             response = await self.language_processor.process_query(
                 user_input=transcription,
-                context=self.conversation_context.copy()
+                context=self.conversation_context.copy(),
+                use_web_context=True,
+                max_web_results=3
             )
             
 
