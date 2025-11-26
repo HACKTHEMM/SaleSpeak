@@ -1,16 +1,18 @@
+import asyncio
 from typing import Dict, Any, Optional
 from .searcher import ExaSearcher
 from .query_processor import LLMQueryProcessor
 
-def get_web_data_for_llm(query: str, exa_api_key: Optional[str] = None) -> Dict[str, Any]:
+async def get_web_data_for_llm(query: str, exa_api_key: Optional[str] = None) -> Dict[str, Any]:
     processor = LLMQueryProcessor()
     searcher = ExaSearcher(exa_api_key)
 
-    intent_data = processor.extract_search_intent(query)
+    intent_data = await processor.extract_search_intent(query)
     
     search_query = intent_data.get("cleaned_query", query)
     
-    results = searcher.search(search_query)
+    loop = asyncio.get_event_loop()
+    results = await loop.run_in_executor(None, lambda: searcher.search(search_query))
 
     return _format_for_llm(results, intent_data)
 

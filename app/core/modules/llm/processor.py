@@ -6,12 +6,9 @@ import asyncio
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock, RLock
-from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate
-from groq import AsyncGroq
 from dotenv import load_dotenv
 from app.Config import ENV_SETTINGS
+from app.core.common.llm_service import LLMService
 
 from app.core.modules.web_scraper.web_scraper import (
     ExaSearcher, 
@@ -28,25 +25,22 @@ from .language_utils import detect_input_language, contains_hindi, is_hinglish_r
 load_dotenv()
 
 class QueryClassifier:
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "mixtral-8x7b-32768"):
-        self.api_key = api_key or ENV_SETTINGS.GROQ_API_KEY
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "openai/gpt-oss-20b"):
+        self.llm_service = LLMService()
         self.model_name = model_name
-        self.client = AsyncGroq(api_key=self.api_key)
         
     async def classify(self, query: str) -> Dict[str, Any]:
         try:
-            completion = await self.client.chat.completions.create(
-                model=self.model_name,
+            result = await self.llm_service.get_completion_async(
                 messages=[
                     {"role": "system", "content": CLASSIFICATION_PROMPT},
                     {"role": "user", "content": query}
                 ],
+                model=self.model_name,
                 temperature=0.1,
                 max_tokens=150,
                 response_format={"type": "json_object"}
             )
-            
-            result = json.loads(completion.choices[0].message.content)
             return result
         except Exception as e:
             return {
@@ -87,29 +81,15 @@ class LanguageProcessor:
         self.response_language = response_language
         self.allow_mixed_language = allow_mixed_language
         
-        self.llm = ChatGroq(
-            groq_api_key=self.api_key,
-            model_name=self.model_name,
-            temperature=ENV_SETTINGS.LLM_TEMPERATURE,
-            max_tokens=ENV_SETTINGS.LLM_MAX_TOKENS
-        )
+        self.llm_service = LLMService()
         
         self.system_prompt = get_system_prompt(self.response_language, self.allow_mixed_language)
-        
-        self.conversation_template = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt),
-            ("human", "{input}")
-        ])
         
         self.classifier = QueryClassifier(self.api_key, self.model_name)
     
     def set_response_language(self, language: str) -> None:
         self.response_language = language
         self.system_prompt = get_system_prompt(self.response_language, self.allow_mixed_language)
-        self.conversation_template = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt),
-            ("human", "{input}")
-        ])
     
     async def process_query(self, user_input: str, context: Optional[Dict[str, Any]] = None,
                      force_language: Optional[str] = None,
@@ -125,17 +105,23 @@ class LanguageProcessor:
             formatted_input = self._format_input(user_input, context, current_language, web_context)
             
             if current_language != self.response_language:
-                temp_system_prompt = get_system_prompt(current_language, self.allow_mixed_language)
-                temp_template = ChatPromptTemplate.from_messages([
-                    ("system", temp_system_prompt),
-                    ("human", "{input}")
-                ])
-                chain = temp_template | self.llm
+                current_system_prompt = get_system_prompt(current_language, self.allow_mixed_language)
             else:
-                chain = self.conversation_template | self.llm
+                current_system_prompt = self.system_prompt
             
-            response = await chain.ainvoke({"input": formatted_input})
-            response_content = response.content.strip()
+            messages = [
+                {"role": "system", "content": current_system_prompt},
+                {"role": "user", "content": formatted_input}
+            ]
+            
+            response_content = await self.llm_service.get_completion_async(
+                messages=messages,
+                model=self.model_name,
+                temperature=ENV_SETTINGS.LLM_TEMPERATURE,
+                max_tokens=ENV_SETTINGS.LLM_MAX_TOKENS
+            )
+            
+            response_content = response_content.strip()
             
             response_content = await self._enforce_language(response_content, current_language, user_input, web_context)
             
@@ -157,8 +143,7 @@ class LanguageProcessor:
             return "\n\n[Web context unavailable - scraper not initialized]\n"
         
         try:
-            loop = asyncio.get_event_loop()
-            web_data = await loop.run_in_executor(None, lambda: get_web_data_for_llm(user_input))
+            web_data = await get_web_data_for_llm(user_input)
             
             if "error" not in web_data:
                 context = "\n\n=== REAL-TIME WEB CONTEXT ===\n"
@@ -216,18 +201,24 @@ class LanguageProcessor:
     async def _enforce_language(self, response_content: str, current_language: str, user_input: str, context: str) -> str:
         if current_language == "hindi" and not self.allow_mixed_language and not contains_hindi(response_content):
             hindi_prompt = get_correction_prompt("hindi", user_input, context)
-            response = await self.llm.ainvoke([
-                SystemMessage(content="You must respond in pure Hindi (हिंदी) using Devanagari script. Never use English."),
-                HumanMessage(content=hindi_prompt)
-            ])
-            return response.content.strip()
+            response_content = await self.llm_service.get_completion_async(
+                messages=[
+                    {"role": "system", "content": "You must respond in pure Hindi (हिंदी) using Devanagari script. Never use English."},
+                    {"role": "user", "content": hindi_prompt}
+                ],
+                model=self.model_name
+            )
+            return response_content.strip()
         elif current_language == "hinglish" and not is_hinglish_response(response_content):
             hinglish_prompt = get_correction_prompt("hinglish", user_input, context)
-            response = await self.llm.ainvoke([
-                SystemMessage(content="Respond in Hinglish (Hindi-English mix) as natural for Indian users. Mix languages naturally."),
-                HumanMessage(content=hinglish_prompt)
-            ])
-            return response.content.strip()
+            response_content = await self.llm_service.get_completion_async(
+                messages=[
+                    {"role": "system", "content": "Respond in Hinglish (Hindi-English mix) as natural for Indian users. Mix languages naturally."},
+                    {"role": "user", "content": hinglish_prompt}
+                ],
+                model=self.model_name
+            )
+            return response_content.strip()
         return response_content
 
     def _handle_error(self, e: Exception, current_language: str) -> str:
@@ -243,10 +234,6 @@ class LanguageProcessor:
     def set_mixed_language_mode(self, allow_mixed: bool) -> None:
         self.allow_mixed_language = allow_mixed
         self.system_prompt = get_system_prompt(self.response_language, self.allow_mixed_language)
-        self.conversation_template = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt),
-            ("human", "{input}")
-        ])
     
     async def process_hinglish_query(self, user_input: str, **kwargs) -> str:
         return await self.process_query(user_input, force_language="hinglish", **kwargs)
@@ -262,20 +249,17 @@ class LanguageProcessor:
     
     def set_system_prompt(self, new_prompt: str) -> None:
         self.system_prompt = new_prompt
-        self.conversation_template = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt),
-            ("human", "{input}")
-        ])
     
     async def process_with_custom_prompt(self, user_input: str, custom_system_prompt: str) -> str:
         try:
-            custom_template = ChatPromptTemplate.from_messages([
-                ("system", custom_system_prompt),
-                ("human", "{input}")
-            ])
-            chain = custom_template | self.llm
-            response = await chain.ainvoke({"input": user_input})
-            return response.content.strip()
+            response_content = await self.llm_service.get_completion_async(
+                messages=[
+                    {"role": "system", "content": custom_system_prompt},
+                    {"role": "user", "content": user_input}
+                ],
+                model=self.model_name
+            )
+            return response_content.strip()
         except Exception as e:
             error_msg = f"Error processing query with custom prompt: {str(e)}"
             print(error_msg)
@@ -307,8 +291,7 @@ class LanguageProcessor:
         if not self.use_web_scraper or not self.web_scraper:
             return {"success": False, "error": "Web scraper not available"}
         try:
-            loop = asyncio.get_event_loop()
-            web_data = await loop.run_in_executor(None, lambda: get_web_data_for_llm(user_input))
+            web_data = await get_web_data_for_llm(user_input)
             return {
                 "success": "error" not in web_data,
                 "context": web_data,

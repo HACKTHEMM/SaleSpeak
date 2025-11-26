@@ -1,21 +1,22 @@
 import json
 from typing import Dict, Any, List
-from groq import Groq
 from app.Config import ENV_SETTINGS
+from app.core.common.llm_service import LLMService
 
 class LLMQueryProcessor:
     def __init__(self):
-        self.client = Groq(api_key=ENV_SETTINGS.GROQ_API_KEY)
-        self.model = ENV_SETTINGS.MODEL_ID
+        self.llm_service = LLMService()
         self.company_name = ENV_SETTINGS.COMPANY_NAME
 
-    def extract_search_intent(self, query: str) -> Dict[str, Any]:
+    async def extract_search_intent(self, query: str) -> Dict[str, Any]:
         system_prompt = f"""You are an expert search query optimizer for a sales and finance AI agent representing {self.company_name}.
 
 # Your responsibilities are:
 - Analyze the user's natural language query.
 - Convert it into an optimized search query for the Exa search engine.
 - Focus on finding authoritative sources for finance, rates, and sales data.
+- Prioritize finding current trending news related to the user's query.
+- Ensure the search results will yield the latest and most appealing news stories.
 
 # CRITICAL INSTRUCTIONS FOR QUERY GENERATION:
 - If the query is about {self.company_name}, ensure the company name is prominent.
@@ -33,17 +34,13 @@ class LLMQueryProcessor:
 """
 
         try:
-            completion = self.client.chat.completions.create(
+            result = await self.llm_service.get_completion_async(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": query}
                 ],
-                model=self.model,
-                temperature=0.1,
                 response_format={"type": "json_object"}
             )
-            
-            result = json.loads(completion.choices[0].message.content)
             return result
         except Exception as e:
             print(f"Error in LLM query processing: {e}")
